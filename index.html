@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>機材管理システム</title>
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css' rel='stylesheet'/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Yu Gothic UI',sans-serif;background:#0f1117;color:#e2e8f0;display:flex;height:100vh;overflow:hidden}
+a{color:inherit;text-decoration:none}
+/* ── Sidebar ── */
+#sb{width:200px;background:#13151f;border-right:1px solid #252840;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+#sb .logo{padding:14px 16px;font-size:13px;font-weight:700;color:#818cf8;border-bottom:1px solid #252840;letter-spacing:.05em}
+#sb .grp-label{padding:10px 16px 4px;font-size:10px;font-weight:700;color:#475569;letter-spacing:.1em;text-transform:uppercase}
+#sb a.nav{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:13px;color:#94a3b8;cursor:pointer;transition:background .12s;border-right:2px solid transparent}
+#sb a.nav:hover{background:#1e2130;color:#e2e8f0}
+#sb a.nav.active{background:#1e2130;color:#818cf8;border-right-color:#818cf8}
+#sb a.nav svg{flex-shrink:0;opacity:.7}
+#sb a.nav.active svg{opacity:1}
+/* ── Main ── */
+#main{flex:1;overflow-y:auto}
+.view{display:none;padding:20px}
+.view.on{display:block}
+/* ── Typography ── */
+h2{font-size:17px;font-weight:700;margin-bottom:16px}
+h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
+/* ── Cards ── */
+.card{background:#1a1d27;border:1px solid #252840;border-radius:8px;padding:16px}
+/* ── Grid ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+/* ── Stat cards ── */
+.sc{background:#1a1d27;border:1px solid #252840;border-radius:8px;padding:14px;cursor:pointer;transition:border-color .12s}
+.sc:hover{border-color:#818cf8}
+.sc .lbl{font-size:11px;color:#64748b;margin-bottom:4px}
+.sc .val{font-size:26px;font-weight:700}
+.sc.r .val{color:#f87171}.sc.a .val{color:#fbbf24}.sc.b .val{color:#60a5fa}
+.sc.g .val{color:#34d399}.sc.p .val{color:#a78bfa}.sc.c .val{color:#38bdf8}
+/* ── Badges ── */
+.bdg{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-stock{background:#1e3a2f;color:#34d399}
+.b-lent{background:#2a1f3d;color:#a78bfa}
+.b-wait{background:#2d2a1a;color:#fbbf24}
+.b-maint{background:#2d1f10;color:#fb923c}
+.b-lost{background:#3a1a1a;color:#f87171}
+.b-draft{background:#252840;color:#64748b}
+.b-prep{background:#1e2a4a;color:#60a5fa}
+.b-out{background:#2a1f3d;color:#a78bfa}
+.b-using{background:#1f2a3d;color:#818cf8}
+.b-retw{background:#2d2a1a;color:#fbbf24}
+.b-done{background:#1e3a2f;color:#34d399}
+.b-over{background:#3a1a1a;color:#f87171}
+.b-cancel{background:#1e1e1e;color:#475569}
+.b-own{background:#1e3a2f;color:#34d399}
+.b-ext{background:#1e2a4a;color:#60a5fa}
+.b-rent{background:#2d2a1a;color:#fbbf24}
+/* ── Forms ── */
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px}
+.fg input,.fg select,.fg textarea{width:100%;background:#0f1117;border:1px solid #252840;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:13px;outline:none;transition:border-color .12s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#6366f1}
+.fg input[type=date],.fg input[type=datetime-local]{color-scheme:dark}
+.date-range{display:flex;align-items:center;gap:8px}
+.date-range span{color:#475569;font-size:12px;flex-shrink:0}
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:6px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:background .12s}
+.btn-p{background:#6366f1;color:#fff}.btn-p:hover{background:#4f46e5}
+.btn-s{background:#1e2130;color:#94a3b8;border:1px solid #252840}.btn-s:hover{color:#e2e8f0}
+.btn-d{background:#7f1d1d;color:#fca5a5}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-xs{padding:3px 8px;font-size:11px}
+/* ── Table ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{padding:8px 10px;text-align:left;color:#64748b;font-size:11px;border-bottom:1px solid #252840;white-space:nowrap}
+.tbl td{padding:9px 10px;border-bottom:1px solid #1a1d27;vertical-align:middle}
+.tbl tr:hover td{background:#1e2130;cursor:pointer}
+/* ── Toolbar ── */
+.tb{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tb input,.tb select{background:#1a1d27;border:1px solid #252840;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:13px;outline:none}
+.tb input{flex:1;min-width:160px}
+/* ── Filter chips ── */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{padding:4px 10px;border-radius:20px;border:1px solid #252840;background:#1a1d27;color:#94a3b8;font-size:12px;cursor:pointer;transition:all .12s}
+.chip:hover,.chip.on{background:#252840;border-color:#6366f1;color:#e2e8f0}
+/* ── Equipment icon ── */
+.eqi{display:inline-flex;align-items:center;justify-content:center;border-radius:6px;flex-shrink:0;overflow:hidden}
+/* ── Equipment card (Minecraft style) ── */
+.eq-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.eq-card{background:#1a1d27;border:1px solid #252840;border-radius:8px;padding:10px;cursor:pointer;transition:border-color .12s;text-align:center}
+.eq-card:hover{border-color:#6366f1}
+.eq-card .ec-icon{width:56px;height:56px;border-radius:8px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center}
+.eq-card .ec-name{font-size:12px;font-weight:600;margin-bottom:2px;line-height:1.3}
+.eq-card .ec-sub{font-size:10px;color:#64748b;margin-bottom:6px}
+.eq-card .ec-loc{font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ── Timeline ── */
+.tline{position:relative;padding-left:22px}
+.tline::before{content:'';position:absolute;left:6px;top:0;bottom:0;width:2px;background:#252840}
+.tl{position:relative;margin-bottom:14px}
+.tl::before{content:'';position:absolute;left:-18px;top:5px;width:8px;height:8px;border-radius:50%;background:#6366f1;border:2px solid #1a1d27}
+.tl .tdt{font-size:11px;color:#64748b}
+.tl .top{font-size:12px;font-weight:600;margin:2px 0}
+.tl .tdet{font-size:12px;color:#94a3b8}
+/* ── Tabs ── */
+.tabs{display:flex;border-bottom:1px solid #252840;margin-bottom:16px}
+.tab{padding:8px 14px;font-size:13px;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:all .12s}
+.tab:hover{color:#94a3b8}
+.tab.on{color:#818cf8;border-bottom-color:#818cf8}
+.tp{display:none}.tp.on{display:block}
+/* ── Slip item row ── */
+.si-row{display:grid;grid-template-columns:90px 1fr 60px 1fr 1fr 80px 32px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #1a1d27}
+.si-head{display:grid;grid-template-columns:90px 1fr 60px 1fr 1fr 80px 32px;gap:6px;padding:4px 0;font-size:11px;color:#64748b;border-bottom:1px solid #252840;margin-bottom:4px}
+/* ── Detail panel ── */
+.dh{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.dh-icon{width:56px;height:56px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dh h2{font-size:18px;margin-bottom:3px}
+.dh .dsub{font-size:12px;color:#64748b}
+.ig{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ig .ik{font-size:11px;color:#64748b;margin-bottom:1px}
+.ig .iv{font-size:13px;font-weight:500}
+/* ── Upload area ── */
+.upa{border:2px dashed #252840;border-radius:8px;padding:18px;text-align:center;cursor:pointer;transition:border-color .12s}
+.upa:hover{border-color:#6366f1}
+/* ── Calendar container ── */
+#cal-wrap{background:#1a1d27;border:1px solid #252840;border-radius:8px;padding:16px}
+#cal-wrap .fc{color:#e2e8f0}
+#cal-wrap .fc-toolbar-title{font-size:15px;font-weight:700}
+#cal-wrap .fc-button{background:#252840!important;border-color:#252840!important;color:#94a3b8!important;font-size:12px!important}
+#cal-wrap .fc-button:hover{background:#2d3148!important;color:#e2e8f0!important}
+#cal-wrap .fc-button-active{background:#6366f1!important;color:#fff!important}
+#cal-wrap .fc-daygrid-day{background:#13151f}
+#cal-wrap .fc-daygrid-day.fc-day-today{background:#1a1d27}
+#cal-wrap .fc-col-header-cell{background:#1a1d27;color:#64748b;font-size:11px}
+#cal-wrap .fc-daygrid-day-number{color:#64748b;font-size:12px}
+#cal-wrap .fc-event{cursor:pointer;border:none!important;border-radius:3px!important;font-size:11px!important;padding:1px 4px!important}
+#cal-wrap .fc-scrollgrid{border-color:#252840!important}
+#cal-wrap .fc-scrollgrid-section>*{border-color:#252840!important}
+#cal-wrap td,.fc-theme-standard .fc-scrollgrid{border-color:#252840!important}
+/* ── Settings table ── */
+.st-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #1a1d27}
+.st-row input{flex:1;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 8px;color:#e2e8f0;font-size:12px;outline:none}
+.st-row input:focus{border-color:#6366f1}
+/* ── Misc ── */
+.empty{text-align:center;padding:36px;color:#64748b;font-size:13px}
+.sep{height:1px;background:#252840;margin:14px 0}
+.mb8{margin-bottom:8px}
+.mb12{margin-bottom:12px}
+.mb16{margin-bottom:16px}
+.mw560{max-width:560px}
+.mw720{max-width:720px}
+.tbl-wrap{overflow-x:auto}
+.icon-upload-area{border:2px dashed #252840;border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color .12s}
+.icon-upload-area:hover{border-color:#6366f1}
+</style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══ -->
+<div id="sb">
+  <div class="logo">📦 機材管理システム</div>
+  <div class="grp-label">確認</div>
+  <a class="nav active" onclick="nav('dashboard')" id="n-dashboard">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="7" height="7" rx="1"/><rect x="9" y="0" width="7" height="7" rx="1"/><rect x="0" y="9" width="7" height="7" rx="1"/><rect x="9" y="9" width="7" height="7" rx="1"/></svg>
+    ダッシュボード
+  </a>
+  <a class="nav" onclick="nav('eq-status')" id="n-eq-status">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="3"/></svg>
+    機材状況
+  </a>
+  <a class="nav" onclick="nav('schedule')" id="n-schedule">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="13" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1 6h14" stroke="currentColor" stroke-width="1"/><rect x="4" y="1" width="2" height="3" rx="1"/><rect x="10" y="1" width="2" height="3" rx="1"/></svg>
+    スケジュール
+  </a>
+  <div class="grp-label">登録</div>
+  <a class="nav" onclick="nav('slip')" id="n-slip">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="1" width="12" height="14" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+    出庫伝票
+  </a>
+  <a class="nav" onclick="nav('eq-reg')" id="n-eq-reg">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v6M5 8h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    機材登録
+  </a>
+  <a class="nav" onclick="nav('icons')" id="n-icons">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+    アイコン管理
+  </a>
+  <div class="grp-label">管理</div>
+  <a class="nav" onclick="nav('settings')" id="n-settings">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+    設定
+  </a>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main">
+
+<!-- ── DASHBOARD ── -->
+<div id="v-dashboard" class="view on">
+  <h2>ダッシュボード</h2>
+  <div class="g4 mb16" id="db-stats"></div>
+  <div class="g2 mb16" id="db-today-events"></div>
+  <div class="g2">
+    <div id="db-lent"></div>
+    <div>
+      <div id="db-returns" class="mb12"></div>
+      <div id="db-alerts"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── EQUIPMENT STATUS ── -->
+<div id="v-eq-status" class="view">
+  <div class="tb">
+    <input id="qs-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderEqStatus()">
+    <select id="qs-st" onchange="renderEqStatus()"><option value="">全ステータス</option></select>
+    <select id="qs-cat" onchange="renderEqStatus()"><option value="">全種別</option></select>
+    <select id="qs-own" onchange="renderEqStatus()"><option value="">全所有区分</option></select>
+    <select id="qs-base" onchange="renderEqStatus()">
+      <option value="">全拠点</option>
+      <option value="Tokyo">Tokyo</option>
+      <option value="Kyoto">Kyoto</option>
+    </select>
+    <button class="btn btn-sm btn-s" id="qs-view-btn" onclick="toggleEqView()">📋 リスト</button>
+  </div>
+  <div class="chips" id="qs-chips"></div>
+  <div id="eq-status-body"></div>
+</div>
+
+<!-- ── SCHEDULE ── -->
+<div id="v-schedule" class="view">
+  <div class="tabs mb16">
+    <div class="tab on" onclick="schedTab(this,'s-cal')">カレンダー</div>
+    <div class="tab" onclick="schedTab(this,'s-grid')">機材グリッド</div>
+  </div>
+  <div id="s-cal" class="tp on">
+    <div id="cal-wrap"><div id="fc-cal"></div></div>
+  </div>
+  <div id="s-grid" class="tp">
+    <div class="tb">
+      <input type="month" id="sg-month" style="color-scheme:dark" onchange="renderSchedGrid()">
+      <select id="sg-cat" onchange="renderSchedGrid()"><option value="">全種別</option></select>
+    </div>
+    <div class="tbl-wrap" id="sched-grid-body"></div>
+  </div>
+</div>
+
+<!-- ── SLIP LIST / FORM / DETAIL ── -->
+<div id="v-slip" class="view">
+  <div id="slip-list-panel">
+    <div class="tb">
+      <input id="sl-q" placeholder="イベント名・場所・担当者で検索…" oninput="renderSlipList()">
+      <select id="sl-st" onchange="renderSlipList()"><option value="">全ステータス</option></select>
+      <button class="btn btn-p btn-sm" onclick="openSlipForm()">＋ 新規伝票</button>
+      <button class="btn btn-s btn-sm" onclick="exportSlipsCSV()" title="伝票リストをCSVで書き出し">⬇ CSV</button>
+    </div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>ステータス</th><th>イベント名</th><th>場所</th><th>担当者</th>
+      <th>使用日</th><th>出庫日</th><th>返却予定</th><th>機材数</th>
+    </tr></thead><tbody id="slip-list-body"></tbody></table></div>
+  </div>
+  <div id="slip-form-panel" style="display:none">
+    <div class="tb mb8">
+      <button class="btn btn-s btn-sm" onclick="closeSlipForm()">← 一覧に戻る</button>
+      <span id="slip-form-title" style="font-size:14px;font-weight:600;color:#e2e8f0"></span>
+    </div>
+    <div class="mw720">
+      <div class="card mb12">
+        <h3 class="mb12">イベント情報</h3>
+        <div class="g2">
+          <div class="fg"><label>イベント名 *</label><input id="sf-event"></div>
+          <div class="fg"><label>クライアント名</label><input id="sf-client"></div>
+        </div>
+        <div class="g2">
+          <div class="fg"><label>場所</label><input id="sf-loc"></div>
+          <div class="fg"><label>担当者</label><input id="sf-person"></div>
+        </div>
+        <div class="g2">
+          <div class="fg"><label>使用開始日時</label><input type="datetime-local" id="sf-start" style="color-scheme:dark"></div>
+          <div class="fg"><label>使用終了日時</label><input type="datetime-local" id="sf-end" style="color-scheme:dark"></div>
+        </div>
+        <div class="g3">
+          <div class="fg"><label>出庫日</label><input type="date" id="sf-checkout" style="color-scheme:dark"></div>
+          <div class="fg"><label>返却予定日</label><input type="date" id="sf-ret-plan" style="color-scheme:dark"></div>
+          <div class="fg"><label>実返却日</label><input type="date" id="sf-ret-actual" style="color-scheme:dark"></div>
+        </div>
+        <div class="fg"><label>ステータス</label>
+          <select id="sf-status">
+            <option>仮登録</option><option>準備中</option><option>出庫済み</option>
+            <option>使用中</option><option>返却待ち</option><option>返却済み</option>
+            <option>未返却</option><option>キャンセル</option>
+          </select>
+        </div>
+        <div class="fg"><label>備考</label><textarea id="sf-notes" rows="2"></textarea></div>
+      </div>
+      <div class="card mb12">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h3 style="margin:0">使用機材一覧</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-s btn-xs" onclick="addSlipItem('own')">＋ 自社機材</button>
+            <button class="btn btn-s btn-xs" onclick="addSlipItem('external')">＋ 他社機材</button>
+            <button class="btn btn-s btn-xs" onclick="addSlipItem('rental')">＋ レンタル</button>
+          </div>
+        </div>
+        <div class="si-head"><span>区分</span><span>機材名</span><span>数量</span><span>使用開始</span><span>使用終了</span><span>備考</span><span></span></div>
+        <div id="sf-items"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" onclick="saveSlip()">保存する</button>
+        <button class="btn btn-s" onclick="closeSlipForm()">キャンセル</button>
+        <button class="btn btn-d btn-sm" id="sf-del-btn" style="display:none" onclick="deleteSlip()">削除</button>
+      </div>
+    </div>
+  </div>
+  <div id="slip-detail-panel" style="display:none">
+    <div class="tb mb8">
+      <button class="btn btn-s btn-sm" onclick="closeSlipDetail()">← 一覧に戻る</button>
+    </div>
+    <div id="slip-detail-body"></div>
+  </div>
+</div>
+
+<!-- ── EQUIPMENT REGISTRATION ── -->
+<div id="v-eq-reg" class="view">
+  <div class="tb">
+    <input id="er-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderEqReg()">
+    <select id="er-cat" onchange="renderEqReg()"><option value="">全種別</option></select>
+    <button class="btn btn-p btn-sm" onclick="openEqForm()">＋ 機材登録</button>
+    <button class="btn btn-s btn-sm" onclick="exportEquipmentCSV()" title="機材リストをCSVで書き出し">⬇ CSV</button>
+    <label class="btn btn-s btn-sm" style="cursor:pointer" title="CSVから機材をインポート">⬆ インポート<input type="file" accept=".csv,text/csv" style="display:none" onchange="importEquipmentCSV(event)"></label>
+  </div>
+  <div class="tbl-wrap mb16"><table class="tbl"><thead><tr>
+    <th width="44"></th><th>機材名</th><th>型番</th><th>管理番号</th>
+    <th>種別</th><th>所有区分</th><th>管理場所</th><th>在庫数</th><th></th>
+  </tr></thead><tbody id="er-body"></tbody></table></div>
+  <div id="eq-form-panel" style="display:none">
+    <div class="sep"></div>
+    <h3 id="eq-form-title" class="mb12">機材登録</h3>
+    <div class="mw720">
+      <div class="g2">
+        <div class="fg"><label>機材名 *</label><input id="ef-name"></div>
+        <div class="fg"><label>型番 *</label><input id="ef-model"></div>
+      </div>
+      <div class="g3">
+        <div class="fg"><label>管理番号</label><input id="ef-serial" placeholder="MIC-001"></div>
+        <div class="fg"><label>メーカー</label><input id="ef-maker"></div>
+        <div class="fg"><label>在庫数</label><input id="ef-qty" type="number" value="1" min="1"></div>
+      </div>
+      <div class="g3">
+        <div class="fg"><label>種別 *</label><select id="ef-cat"></select></div>
+        <div class="fg"><label>所有区分</label><select id="ef-own"></select></div>
+        <div class="fg"><label>管理場所</label><select id="ef-loc"></select></div>
+      </div>
+      <div class="g3">
+        <div class="fg">
+          <label>拠点（自社機材）</label>
+          <select id="ef-base">
+            <option value="">未設定</option>
+            <option value="Tokyo">Tokyo</option>
+            <option value="Kyoto">Kyoto</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>アイコンキー</label>
+          <select id="ef-icon-key"></select>
+        </div>
+        <div class="fg"><label>並び順</label><input id="ef-sort" type="number" value="0"></div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label>アイコンカラー</label>
+          <select id="ef-color">
+            <option value="#60a5fa">青</option><option value="#fbbf24">黄</option>
+            <option value="#f87171">赤</option><option value="#34d399">緑</option>
+            <option value="#a78bfa">紫</option><option value="#fb923c">橙</option>
+            <option value="#38bdf8">水色</option><option value="#f472b6">ピンク</option>
+            <option value="#94a3b8">グレー</option>
+          </select>
+        </div>
+      <div class="fg">
+        <label>アイコン画像（オリジナル）</label>
+        <div class="icon-upload-area" onclick="document.getElementById('ef-icon-file').click()">
+          <input type="file" id="ef-icon-file" accept="image/*" style="display:none" onchange="handleEfIcon(event)">
+          <div id="ef-icon-ph" style="color:#64748b;font-size:13px">クリックして画像をアップロード（PNG/JPG/SVG）<br><span style="font-size:11px;color:#475569">未設定の場合は種別デフォルトアイコンを使用</span></div>
+          <div id="ef-icon-preview" style="display:none;align-items:center;justify-content:center;gap:10px">
+            <img id="ef-icon-img" style="width:44px;height:44px;object-fit:contain;border-radius:6px;background:#0f1117;border:1px solid #252840">
+            <button class="btn btn-s btn-xs" onclick="clearEfIcon(event)">削除</button>
+          </div>
+        </div>
+      </div>
+    </div><!-- /g2 -->
+    <div class="fg"><label>よく使う機材</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="ef-fav" style="width:auto;flex-shrink:0"> <span style="font-size:13px;color:#94a3b8">よく使う機材としてマーク</span>
+      </label>
+    </div>
+    <div class="fg"><label>備考</label><textarea id="ef-notes" rows="2"></textarea></div>
+    <input type="hidden" id="ef-id">
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-p" onclick="saveEq()">保存</button>
+      <button class="btn btn-s" onclick="closeEqForm()">キャンセル</button>
+      <button class="btn btn-d btn-sm" id="ef-del-btn" style="display:none" onclick="deleteEq()">削除</button>
+    </div>
+    </div><!-- /mw720 -->
+  </div><!-- /eq-form-panel -->
+</div><!-- /v-eq-reg -->
+
+<!-- ── ICON MANAGER ── -->
+<div id="v-icons" class="view">
+  <h2>アイコン管理</h2>
+  <div class="tabs">
+    <div class="tab on" onclick="iconTab(this,'ic-keys')">アイコンキー一覧</div>
+    <div class="tab" onclick="iconTab(this,'ic-add')">新規キーを追加</div>
+  </div>
+  <div id="ic-keys" class="tp on"><div id="ic-keys-body"></div></div>
+  <div id="ic-add" class="tp">
+    <div class="card mw560" style="margin-top:4px">
+      <h3 class="mb12">新しいアイコンキーを登録</h3>
+      <div class="fg"><label>キー名 * <span style="font-size:11px;color:#475569">（英数字・ハイフン推奨）</span></label>
+        <input id="nic-key" placeholder="例: DI-BOX"></div>
+      <div class="fg"><label>表示名 *</label>
+        <input id="nic-label" placeholder="例: DI ボックス"></div>
+      <div class="fg"><label>説明</label>
+        <input id="nic-desc" placeholder="例: ダイレクトボックス全般"></div>
+      <div class="fg">
+        <label>カスタム画像（任意）</label>
+        <div class="icon-upload-area" onclick="document.getElementById('nic-file').click()">
+          <input type="file" id="nic-file" accept="image/*" style="display:none" onchange="handleNicIcon(event)">
+          <div id="nic-ph" style="color:#64748b;font-size:13px">クリックして画像をアップロード（PNG/JPG/SVG）</div>
+          <div id="nic-preview" style="display:none;align-items:center;justify-content:center;gap:10px">
+            <img id="nic-img" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#0f1117;border:1px solid #252840">
+            <button class="btn btn-s btn-xs" onclick="clearNicIcon(event)">削除</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-p" onclick="saveNewIconKey()">登録する</button>
+        <button class="btn btn-s" onclick="clearNewIconKeyForm()">クリア</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SETTINGS ── -->
+<div id="v-settings" class="view">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <h2 style="margin:0">設定</h2>
+    <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
+  </div>
+  <div class="tabs">
+    <div class="tab on" onclick="settTab(this,'st-icon')">アイコンキー</div>
+    <div class="tab" onclick="settTab(this,'st-cat')">種別</div>
+    <div class="tab" onclick="settTab(this,'st-loc')">管理場所</div>
+    <div class="tab" onclick="settTab(this,'st-status')">ステータス</div>
+    <div class="tab" onclick="settTab(this,'st-own')">所有区分</div>
+    <div class="tab" onclick="settTab(this,'st-color')">表示色</div>
+  </div>
+  <div id="st-icon" class="tp on"><div id="stt-icon-body"></div></div>
+  <div id="st-cat" class="tp"><div id="stt-cat-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('cat')">＋ 追加</button></div></div>
+  <div id="st-loc" class="tp"><div id="stt-loc-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('loc')">＋ 追加</button></div></div>
+  <div id="st-status" class="tp"><div id="stt-status-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('status')">＋ 追加</button></div></div>
+  <div id="st-own" class="tp"><div id="stt-own-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('own')">＋ 追加</button></div></div>
+  <div id="st-color" class="tp"><div id="stt-color-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('color')">＋ 追加</button></div></div>
+</div>
+
+<!-- ── DETAIL (machine detail) ── -->
+<div id="v-detail" class="view">
+  <div class="tb mb12"><button class="btn btn-s btn-sm" onclick="nav(prevView||'eq-status')">← 戻る</button></div>
+  <div id="detail-body"></div>
+</div>
+
+</div><!-- /main -->
+
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+<script>
+// ═══════════════════════════════════════════════
+//  MASTER DATA (Settings)
+// ═══════════════════════════════════════════════
+// アイコンキーマスター（SVG関数のキー一覧）
+let mIcons = [
+  {id:'i1',key:'マイク',label:'マイク',desc:'有線マイク全般'},
+  {id:'i2',key:'ワイヤレスマイク',label:'ワイヤレスマイク',desc:'ワイヤレス送受信機'},
+  {id:'i3',key:'スピーカー',label:'スピーカー',desc:'PA・モニタースピーカー'},
+  {id:'i4',key:'ミキサー',label:'ミキサー',desc:'音響ミキサー'},
+  {id:'i5',key:'スイッチャー',label:'スイッチャー',desc:'映像スイッチャー'},
+  {id:'i6',key:'カメラ',label:'カメラ',desc:'ビデオ・スチルカメラ'},
+  {id:'i7',key:'モニター',label:'モニター',desc:'ディスプレイ・プロジェクター'},
+  {id:'i8',key:'照明',label:'照明',desc:'照明器具全般'},
+  {id:'i9',key:'ケーブル',label:'ケーブル',desc:'各種ケーブル類'},
+  {id:'i10',key:'周辺機器',label:'周辺機器',desc:'その他周辺機器'},
+];
+
+let mCat = [
+  {id:'c1',name:'マイク',icon:'マイク',color:'#60a5fa'},
+  {id:'c2',name:'ワイヤレスマイク',icon:'ワイヤレスマイク',color:'#a78bfa'},
+  {id:'c3',name:'スピーカー',icon:'スピーカー',color:'#38bdf8'},
+  {id:'c4',name:'ミキサー',icon:'ミキサー',color:'#34d399'},
+  {id:'c5',name:'スイッチャー',icon:'スイッチャー',color:'#f472b6'},
+  {id:'c6',name:'カメラ',icon:'カメラ',color:'#fb923c'},
+  {id:'c7',name:'モニター',icon:'モニター',color:'#60a5fa'},
+  {id:'c8',name:'照明',icon:'照明',color:'#fbbf24'},
+  {id:'c9',name:'ケーブル',icon:'ケーブル',color:'#94a3b8'},
+  {id:'c10',name:'周辺機器',icon:'周辺機器',color:'#a78bfa'},
+];
+let mLoc = [
+  {id:'l1',name:'JP倉庫',base:'Tokyo'},{id:'l2',name:'東京事務所',base:'Tokyo'},
+  {id:'l3',name:'京都倉庫',base:'Kyoto'},{id:'l4',name:'関西',base:'Kyoto'},
+  {id:'l5',name:'外部保管',base:''},{id:'l6',name:'現場保管',base:''},
+];
+let mStatus = [
+  {id:'s1',name:'在庫あり',cls:'b-stock'},
+  {id:'s2',name:'貸出中',cls:'b-lent'},
+  {id:'s3',name:'返却待ち',cls:'b-wait'},
+  {id:'s4',name:'メンテナンス中',cls:'b-maint'},
+  {id:'s5',name:'紛失・確認中',cls:'b-lost'},
+];
+let mOwn = [
+  {id:'o1',name:'自社機材'},{id:'o2',name:'他社機材'},{id:'o3',name:'レンタル機材'},
+];
+let mColors = [
+  {id:'col1',name:'青',code:'#60a5fa'},{id:'col2',name:'黄',code:'#fbbf24'},
+  {id:'col3',name:'赤',code:'#f87171'},{id:'col4',name:'緑',code:'#34d399'},
+  {id:'col5',name:'紫',code:'#a78bfa'},{id:'col6',name:'橙',code:'#fb923c'},
+];
+
+// ═══════════════════════════════════════════════
+//  EQUIPMENT DATA
+// ═══════════════════════════════════════════════
+const dA = (n)=>{ let d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const dtA = (n,h=9)=>{ let d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10)+'T'+String(h).padStart(2,'0')+':00'; };
+
+let equipment = [
+  {id:'E001',name:'ダイナミックマイク SM58',model:'SM58',serial:'MIC-001',maker:'Shure',cat:'マイク',iconKey:'マイク',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:3,color:'#fbbf24',sort:1,fav:true,notes:'',
+   status:'貸出中',location:'大阪グランドホテル',holder:'西守 健',slipId:'SL001'},
+  {id:'E002',name:'ダイナミックマイク SM57',model:'SM57',serial:'MIC-002',maker:'Shure',cat:'マイク',iconKey:'マイク',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:4,color:'#60a5fa',sort:2,fav:true,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E003',name:'コンデンサーマイク BETA57A',model:'BETA57A',serial:'MIC-003',maker:'Shure',cat:'マイク',iconKey:'マイク',own:'自社機材',base:'Kyoto',defLoc:'京都倉庫',qty:2,color:'#f87171',sort:3,fav:false,notes:'',
+   status:'返却待ち',location:'関西スタジオ',holder:'佐藤 次郎',slipId:'SL002'},
+  {id:'E004',name:'ワイヤレスマイク ULX-D',model:'ULX-D',serial:'WLS-001',maker:'Shure',cat:'ワイヤレスマイク',iconKey:'ワイヤレスマイク',own:'自社機材',base:'Kyoto',defLoc:'京都倉庫',qty:2,color:'#a78bfa',sort:4,fav:true,notes:'',
+   status:'貸出中',location:'名古屋会場',holder:'高橋 誠',slipId:'SL003'},
+  {id:'E005',name:'ワイヤレスマイク UR2',model:'UR2',serial:'WLS-002',maker:'Sennheiser',cat:'ワイヤレスマイク',iconKey:'ワイヤレスマイク',own:'自社機材',base:'Kyoto',defLoc:'関西',qty:2,color:'#fb923c',sort:5,fav:false,notes:'送信部不具合',
+   status:'メンテナンス中',location:'修理センター',holder:'メーカー',slipId:''},
+  {id:'E006',name:'パワードスピーカー SRM450',model:'SRM450',serial:'SPK-001',maker:'Mackie',cat:'スピーカー',iconKey:'スピーカー',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:4,color:'#38bdf8',sort:6,fav:true,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E007',name:'ラインアレイ V-DOSC',model:'V-DOSC',serial:'SPK-002',maker:'L-Acoustics',cat:'スピーカー',iconKey:'スピーカー',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:8,color:'#fbbf24',sort:7,fav:false,notes:'',
+   status:'貸出中',location:'福岡ドーム',holder:'松本 直樹',slipId:'SL004'},
+  {id:'E008',name:'デジタルミキサー M7CL',model:'M7CL',serial:'MIX-001',maker:'Yamaha',cat:'ミキサー',iconKey:'ミキサー',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:1,color:'#34d399',sort:8,fav:true,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E009',name:'デジタルミキサー CL5',model:'CL5',serial:'MIX-002',maker:'Yamaha',cat:'ミキサー',iconKey:'ミキサー',own:'自社機材',base:'Kyoto',defLoc:'京都倉庫',qty:1,color:'#60a5fa',sort:9,fav:true,notes:'',
+   status:'貸出中',location:'東京ガーデン',holder:'伊藤 めぐみ',slipId:'SL001'},
+  {id:'E010',name:'ビデオスイッチャー V-160HD',model:'V-160HD',serial:'SWT-001',maker:'Roland',cat:'スイッチャー',iconKey:'スイッチャー',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:1,color:'#f472b6',sort:10,fav:true,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E011',name:'業務用カメラ AJ-PX5000',model:'AJ-PX5000',serial:'CAM-001',maker:'Panasonic',cat:'カメラ',iconKey:'カメラ',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:2,color:'#34d399',sort:11,fav:false,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E012',name:'LEDパーライト RUSH PAR1',model:'RUSH PAR1',serial:'LGT-001',maker:'CHAUVET',cat:'照明',iconKey:'照明',own:'自社機材',base:'Kyoto',defLoc:'関西',qty:12,color:'#fbbf24',sort:12,fav:false,notes:'',
+   status:'貸出中',location:'大阪グランドホテル',holder:'西守 健',slipId:'SL001'},
+  {id:'E013',name:'XLRケーブル 10m',model:'XLR-10M',serial:'CBL-001',maker:'Canare',cat:'ケーブル',iconKey:'ケーブル',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:20,color:'#94a3b8',sort:13,fav:false,notes:'',
+   status:'在庫あり',location:'JP倉庫',holder:'',slipId:''},
+  {id:'E014',name:'プロジェクター PT-RZ21K',model:'PT-RZ21K',serial:'MON-001',maker:'Panasonic',cat:'モニター',iconKey:'モニター',own:'自社機材',base:'Tokyo',defLoc:'JP倉庫',qty:1,color:'#60a5fa',sort:14,fav:false,notes:'',
+   status:'紛失・確認中',location:'不明',holder:'',slipId:''},
+];
+
+// ═══════════════════════════════════════════════
+//  SLIP DATA
+// ═══════════════════════════════════════════════
+let slips = [
+  {id:'SL001',event:'大阪グランドホテル 宴会',client:'グランドホテル',loc:'大阪グランドホテル',person:'西守 健',
+   start:dtA(-2,10),end:dtA(1,22),checkout:dA(-3),retPlan:dA(2),retActual:'',
+   status:'使用中',notes:''},
+  {id:'SL002',event:'神戸ライブ 2024',client:'神戸ライブ実行委員会',loc:'関西スタジオ',person:'佐藤 次郎',
+   start:dtA(-10,18),end:dtA(-8,23),checkout:dA(-12),retPlan:dA(-7),retActual:'',
+   status:'返却待ち',notes:'返却連絡待ち'},
+  {id:'SL003',event:'名古屋イベント 音響',client:'名古屋イベント社',loc:'名古屋会場',person:'高橋 誠',
+   start:dtA(0,9),end:dtA(0,20),checkout:dA(-1),retPlan:dA(1),retActual:'',
+   status:'使用中',notes:''},
+  {id:'SL004',event:'福岡コンサート',client:'福岡プロモーション',loc:'福岡ドーム',person:'松本 直樹',
+   start:dtA(1,12),end:dtA(3,23),checkout:dA(0),retPlan:dA(4),retActual:'',
+   status:'出庫済み',notes:'大型案件'},
+  {id:'SL005',event:'東京展示会 映像設備',client:'東京展示会社',loc:'東京ビッグサイト',person:'山口 太郎',
+   start:dtA(5,9),end:dtA(7,18),checkout:dA(4),retPlan:dA(8),retActual:'',
+   status:'準備中',notes:''},
+];
+let slipItems = [
+  {id:'SI001',slipId:'SL001',type:'own',eqId:'E001',name:'SM58',qty:4,start:dtA(-2,10),end:dtA(1,22),notes:''},
+  {id:'SI002',slipId:'SL001',type:'own',eqId:'E009',name:'CL5',qty:1,start:dtA(-2,10),end:dtA(1,22),notes:'FOH卓'},
+  {id:'SI003',slipId:'SL001',type:'own',eqId:'E012',name:'LEDパーライト',qty:8,start:dtA(-2,10),end:dtA(1,22),notes:''},
+  {id:'SI004',slipId:'SL001',type:'rental',eqId:null,name:'バックライン一式',qty:1,start:dtA(-2,10),end:dtA(1,22),notes:'○○レンタル社'},
+  {id:'SI005',slipId:'SL002',type:'own',eqId:'E003',name:'BETA57A',qty:2,start:dtA(-10,18),end:dtA(-8,23),notes:''},
+  {id:'SI006',slipId:'SL003',type:'own',eqId:'E004',name:'ULX-D',qty:2,start:dtA(0,9),end:dtA(0,20),notes:''},
+  {id:'SI007',slipId:'SL004',type:'own',eqId:'E007',name:'V-DOSC',qty:8,start:dtA(1,12),end:dtA(3,23),notes:''},
+  {id:'SI008',slipId:'SL005',type:'own',eqId:'E010',name:'V-160HD',qty:1,start:dtA(5,9),end:dtA(7,18),notes:''},
+  {id:'SI009',slipId:'SL005',type:'external',eqId:null,name:'大型LED壁',qty:2,start:dtA(5,9),end:dtA(7,18),notes:'○○映像社より借用'},
+];
+let historyLog = [
+  {id:'H001',eqId:'E001',dt:dA(-3)+'T09:00',op:'出庫',from:'JP倉庫',to:'大阪グランドホテル',fromP:'田中 花子',toP:'西守 健',slip:'SL001',memo:''},
+  {id:'H002',eqId:'E003',dt:dA(-12)+'T10:00',op:'出庫',from:'JP倉庫',to:'関西スタジオ',fromP:'田中 花子',toP:'佐藤 次郎',slip:'SL002',memo:''},
+  {id:'H003',eqId:'E004',dt:dA(-1)+'T16:00',op:'出庫',from:'JP倉庫',to:'名古屋会場',fromP:'山口 太郎',toP:'高橋 誠',slip:'SL003',memo:''},
+  {id:'H004',eqId:'E007',dt:dA(0)+'T08:00',op:'出庫',from:'JP倉庫',to:'福岡ドーム',fromP:'田中 花子',to_p:'松本 直樹',slip:'SL004',memo:''},
+];
+
+const customIcons = {};
+const customIconsByKey = {};
+let pendingEfIcon = null;
+
+// ═══════════════════════════════════════════════
+//  ICONS (pixel art SVG)
+// ═══════════════════════════════════════════════
+const ICONS = {
+  'マイク':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="7" y="1" width="6" height="2" fill="${c}"/><rect x="6" y="3" width="8" height="1" fill="${c}"/>
+    <rect x="5" y="4" width="10" height="6" fill="${c}"/><rect x="6" y="10" width="8" height="1" fill="${c}"/>
+    <rect x="7" y="11" width="6" height="1" fill="${c}"/><rect x="5" y="7" width="2" height="2" fill="${c}" opacity=".5"/>
+    <rect x="13" y="7" width="2" height="2" fill="${c}" opacity=".5"/><rect x="9" y="12" width="2" height="4" fill="${c}"/>
+    <rect x="6" y="16" width="8" height="2" fill="${c}"/></svg>`,
+  'ワイヤレスマイク':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="7" y="2" width="6" height="2" fill="${c}"/><rect x="6" y="4" width="8" height="5" fill="${c}"/>
+    <rect x="7" y="9" width="6" height="1" fill="${c}"/><rect x="9" y="10" width="2" height="6" fill="${c}"/>
+    <rect x="6" y="16" width="8" height="2" fill="${c}"/><rect x="3" y="3" width="2" height="1" fill="${c}" opacity=".6"/>
+    <rect x="2" y="5" width="1" height="1" fill="${c}" opacity=".4"/><rect x="15" y="3" width="2" height="1" fill="${c}" opacity=".6"/>
+    <rect x="17" y="5" width="1" height="1" fill="${c}" opacity=".4"/></svg>`,
+  'スピーカー':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="2" width="16" height="16" rx="1" fill="${c}" opacity=".2"/>
+    <rect x="2" y="2" width="16" height="16" rx="1" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <circle cx="10" cy="10" r="5" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <circle cx="10" cy="10" r="2" fill="${c}" opacity=".6"/><circle cx="10" cy="10" r="1" fill="${c}"/>
+    <rect x="14" y="4" width="2" height="2" rx="1" fill="${c}" opacity=".8"/></svg>`,
+  'ミキサー':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="4" width="18" height="12" rx="1" fill="${c}" opacity=".15" stroke="${c}" stroke-width="1"/>
+    <rect x="3" y="7" width="2" height="6" rx="1" fill="${c}" opacity=".5"/><rect x="4" y="9" width="1" height="2" fill="${c}"/>
+    <rect x="7" y="6" width="2" height="6" rx="1" fill="${c}" opacity=".5"/><rect x="8" y="7" width="1" height="2" fill="${c}"/>
+    <rect x="11" y="8" width="2" height="6" rx="1" fill="${c}" opacity=".5"/><rect x="12" y="10" width="1" height="2" fill="${c}"/>
+    <rect x="15" y="7" width="2" height="6" rx="1" fill="${c}" opacity=".5"/><rect x="16" y="8" width="1" height="2" fill="${c}"/>
+    <circle cx="3.5" cy="6" r=".7" fill="${c}"/><circle cx="7.5" cy="6" r=".7" fill="${c}"/></svg>`,
+  'スイッチャー':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="5" width="18" height="10" rx="1" fill="${c}" opacity=".15" stroke="${c}" stroke-width="1"/>
+    <rect x="3" y="7" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/>
+    <rect x="7" y="7" width="3" height="2" rx=".5" fill="${c}"/>
+    <rect x="11" y="7" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/>
+    <rect x="3" y="11" width="3" height="2" rx=".5" fill="${c}"/>
+    <rect x="7" y="11" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/>
+    <rect x="11" y="11" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/>
+    <circle cx="16.5" cy="8.5" r="1.2" fill="${c}"/><circle cx="16.5" cy="12.5" r="1.2" fill="${c}" opacity=".5"/></svg>`,
+  'カメラ':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="6" width="14" height="10" rx="1" fill="${c}" opacity=".2" stroke="${c}" stroke-width="1"/>
+    <rect x="14" y="8" width="5" height="6" rx="1" fill="${c}" opacity=".5"/>
+    <circle cx="7" cy="11" r="3.5" fill="none" stroke="${c}" stroke-width="1.5"/>
+    <circle cx="7" cy="11" r="1.5" fill="${c}" opacity=".5"/><circle cx="7" cy="11" r=".7" fill="${c}"/>
+    <rect x="3" y="4" width="4" height="2" rx=".5" fill="${c}" opacity=".7"/></svg>`,
+  'モニター':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="2" width="18" height="13" rx="1" fill="${c}" opacity=".15" stroke="${c}" stroke-width="1"/>
+    <rect x="3" y="4" width="9" height="6" rx=".5" fill="${c}" opacity=".3"/>
+    <rect x="13" y="4" width="4" height="2" rx=".5" fill="${c}" opacity=".2"/>
+    <rect x="13" y="7" width="4" height="2" rx=".5" fill="${c}" opacity=".2"/>
+    <rect x="8" y="15" width="4" height="2" fill="${c}" opacity=".5"/>
+    <rect x="6" y="17" width="8" height="1" fill="${c}" opacity=".4"/></svg>`,
+  '照明':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="8" y="2" width="4" height="2" fill="${c}" opacity=".6"/>
+    <rect x="5" y="4" width="10" height="7" rx="1" fill="${c}"/>
+    <rect x="6" y="5" width="8" height="5" fill="${c}" opacity=".4"/>
+    <rect x="8" y="11" width="4" height="2" fill="${c}" opacity=".7"/>
+    <rect x="5" y="13" width="10" height="1" fill="${c}" opacity=".4"/>
+    <rect x="6" y="14" width="8" height="1" fill="${c}" opacity=".3"/>
+    <rect x="2" y="7" width="1" height="1" fill="${c}" opacity=".5"/><rect x="17" y="7" width="1" height="1" fill="${c}" opacity=".5"/></svg>`,
+  'ケーブル':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="9" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/>
+    <rect x="4" y="8" width="2" height="4" rx=".5" fill="${c}"/>
+    <path d="M6 9 Q8 6 10 9 Q12 12 14 9" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/>
+    <rect x="14" y="8" width="2" height="4" rx=".5" fill="${c}"/>
+    <rect x="16" y="9" width="3" height="2" rx=".5" fill="${c}" opacity=".7"/></svg>`,
+  '周辺機器':(c)=>`<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <rect x="3" y="4" width="14" height="12" rx="1" fill="${c}" opacity=".15" stroke="${c}" stroke-width="1"/>
+    <rect x="5" y="6" width="4" height="3" rx=".5" fill="${c}" opacity=".7"/>
+    <rect x="5" y="10" width="4" height="3" rx=".5" fill="${c}" opacity=".5"/>
+    <rect x="11" y="6" width="5" height="2" rx=".5" fill="${c}" opacity=".4"/>
+    <rect x="11" y="9" width="5" height="1" rx=".5" fill="${c}" opacity=".3"/>
+    <rect x="11" y="11" width="5" height="1" rx=".5" fill="${c}" opacity=".3"/>
+    <rect x="7" y="16" width="6" height="2" fill="${c}" opacity=".4"/></svg>`,
+};
+
+function getIcon(cat,color,size=32,eqId=''){
+  if(eqId && customIcons[eqId])
+    return `<div class="eqi" style="width:${size}px;height:${size}px;background:#1a1d27;border:1px solid #252840"><img src="${customIcons[eqId]}" style="width:100%;height:100%;object-fit:contain"></div>`;
+  // iconKey takes precedence over cat for SVG lookup
+  const eq = eqId ? equipment.find(e=>e.id===eqId) : null;
+  const key = (eq&&eq.iconKey) || cat;
+  // アイコンキーレベルのカスタム画像
+  if(customIconsByKey[key])
+    return `<div class="eqi" style="width:${size}px;height:${size}px;background:#1a1d27;border:1px solid #252840"><img src="${customIconsByKey[key]}" style="width:100%;height:100%;object-fit:contain"></div>`;
+  const fn = ICONS[key]||ICONS[cat]||ICONS['周辺機器'];
+  return `<div class="eqi" style="width:${size}px;height:${size}px;background:${color}22;padding:${size>30?3:2}px">${fn(color)}</div>`;
+}
+
+// Base badge
+const baseBdg = b => b ? `<span class="bdg" style="background:${b==='Tokyo'?'#1e2a4a':'#1a2d1e'};color:${b==='Tokyo'?'#60a5fa':'#34d399'};font-size:10px">${b}</span>` : '';
+
+// ═══════════════════════════════════════════════
+//  BADGES
+// ═══════════════════════════════════════════════
+const EBADGE = {'在庫あり':'b-stock','貸出中':'b-lent','返却待ち':'b-wait','メンテナンス中':'b-maint','紛失・確認中':'b-lost'};
+const SBADGE = {'仮登録':'b-draft','準備中':'b-prep','出庫済み':'b-out','使用中':'b-using','返却待ち':'b-retw','返却済み':'b-done','未返却':'b-over','キャンセル':'b-cancel'};
+const IBADGE = {'own':'b-own','external':'b-ext','rental':'b-rent'};
+const INAME = {'own':'自社','external':'他社','rental':'レンタル'};
+const ebdg = s=>`<span class="bdg ${EBADGE[s]||'b-draft'}">${s}</span>`;
+const sbdg = s=>`<span class="bdg ${SBADGE[s]||'b-draft'}">${s}</span>`;
+const ibdg = t=>`<span class="bdg ${IBADGE[t]||'b-draft'}">${INAME[t]||t}</span>`;
+
+// ═══════════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════════
+const fmt = d=>d?new Date(d).toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit'}):'—';
+const fmtF = d=>d?new Date(d).toLocaleDateString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit'}):'—';
+const fmtDT = d=>d?new Date(d).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const today = ()=>new Date().toISOString().slice(0,10);
+const nowISO = ()=>new Date().toISOString().slice(0,16);
+
+function checkOverdue(){
+  const t = today();
+  equipment.forEach(e=>{
+    if((e.status==='貸出中'||e.status==='返却待ち') && e.retDue && e.retDue < t) e.status='返却待ち';
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════
+let currentView = 'dashboard';
+let prevView = '';
+let calInstance = null;
+
+function nav(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('on'));
+  document.querySelectorAll('#sb a.nav').forEach(el=>el.classList.remove('active'));
+  const vEl = document.getElementById('v-'+v);
+  if(vEl) vEl.classList.add('on');
+  const nEl = document.getElementById('n-'+v.split('-')[0]+(v.includes('-')&&v!=='eq-status'&&v!=='eq-reg'?'-'+v.split('-').slice(1).join('-'):''));
+  // simpler approach
+  document.querySelectorAll('#sb a.nav').forEach(el=>{
+    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes("'"+v+"'")){el.classList.add('active');}
+  });
+  prevView = currentView;
+  currentView = v;
+  if(v==='dashboard') renderDashboard();
+  if(v==='eq-status') renderEqStatus();
+  if(v==='schedule') renderSchedule();
+  if(v==='slip'){ showSlipList(); renderSlipList(); }
+  if(v==='eq-reg') renderEqReg();
+  if(v==='icons') renderIconManager();
+  if(v==='settings') renderSettings();
+}
+
+// ═══════════════════════════════════════════════
+//  DASHBOARD
+// ═══════════════════════════════════════════════
+function renderDashboard(){
+  const t = today();
+  const todaySlips = slips.filter(s=>s.start&&s.start.slice(0,10)===t);
+  const lent = equipment.filter(e=>e.status==='貸出中');
+  const waiting = equipment.filter(e=>e.status==='返却待ち');
+  const maint = equipment.filter(e=>e.status==='メンテナンス中');
+  const lost = equipment.filter(e=>e.status==='紛失・確認中');
+  const inStock = equipment.filter(e=>e.status==='在庫あり').length;
+
+  const tokyoLent=lent.filter(e=>e.base==='Tokyo').length;
+  const kyotoLent=lent.filter(e=>e.base==='Kyoto').length;
+  document.getElementById('db-stats').innerHTML=`
+    <div class="sc p" onclick="nav('eq-status')"><div class="lbl">貸出中（全体）</div><div class="val">${lent.length}</div>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <span style="font-size:11px;color:#60a5fa">Tokyo: ${tokyoLent}</span>
+        <span style="font-size:11px;color:#34d399">Kyoto: ${kyotoLent}</span>
+      </div>
+    </div>
+    <div class="sc a" onclick="filterEqStatus('返却待ち')"><div class="lbl">返却待ち</div><div class="val">${waiting.length}</div></div>
+    <div class="sc r" onclick="filterEqStatus('紛失・確認中')"><div class="lbl">紛失・確認中</div><div class="val">${lost.length}</div></div>
+    <div class="sc b" onclick="filterEqStatus('メンテナンス中')"><div class="lbl">メンテナンス中</div><div class="val">${maint.length}</div></div>
+  `;
+
+  // Today events
+  const near = slips.filter(s=>s.start&&s.start.slice(0,10)>=t&&s.status!=='キャンセル').slice(0,4);
+  document.getElementById('db-today-events').innerHTML=`
+    <div class="card">
+      <h3>📅 本日使用予定（${todaySlips.length}件）</h3>
+      ${todaySlips.length?todaySlips.map(s=>{
+        const items=slipItems.filter(i=>i.slipId===s.id);
+        return `<div style="padding:8px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openSlipDetail('${s.id}')">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">${sbdg(s.status)}<span style="font-size:13px;font-weight:600">${s.event}</span></div>
+          <div style="font-size:12px;color:#64748b">${s.loc} / ${s.person}</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px">機材: ${items.map(i=>i.name).join('、')}</div>
+        </div>`;
+      }).join(''):'<div class="empty" style="padding:16px">本日の予定なし</div>'}
+    </div>
+    <div class="card">
+      <h3>🗓️ 近日のイベント</h3>
+      ${near.map(s=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openSlipDetail('${s.id}')">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${s.event}</div>
+          <div style="font-size:11px;color:#64748b">${fmt(s.start)} / ${s.loc}</div>
+        </div>${sbdg(s.status)}
+      </div>`).join('')||'<div class="empty" style="padding:16px">近日の予定なし</div>'}
+    </div>
+  `;
+
+  // Lent
+  document.getElementById('db-lent').innerHTML=`<div class="card">
+    <h3>🔵 貸出中（${lent.length}件）</h3>
+    ${lent.map(e=>{
+      const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openDetail('${e.id}')">
+        ${getIcon(e.cat,e.color,28,e.id)}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${e.name}</div>
+          <div style="font-size:11px;color:#64748b">${e.location} / ${sl?sl.event:'—'}</div>
+        </div>${ebdg(e.status)}
+      </div>`;
+    }).join('')||'<div class="empty" style="padding:12px">貸出中なし</div>'}
+  </div>`;
+
+  // Returns
+  const tom = dA(1);
+  const todayRet = equipment.filter(e=>{ const s=e.slipId?slips.find(x=>x.id===e.slipId):null; return s&&s.retPlan===t; });
+  const tomRet = equipment.filter(e=>{ const s=e.slipId?slips.find(x=>x.id===e.slipId):null; return s&&s.retPlan===tom; });
+  const over = equipment.filter(e=>{ const s=e.slipId?slips.find(x=>x.id===e.slipId):null; return s&&s.retPlan<t&&s.retPlan&&!s.retActual; });
+  document.getElementById('db-returns').innerHTML=`<div class="card">
+    <h3>📦 返却状況</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="background:#1e3a2f;border-radius:6px;padding:10px;text-align:center;cursor:pointer" onclick="nav('eq-status')">
+        <div style="font-size:11px;color:#34d399">本日返却</div><div style="font-size:22px;font-weight:700;color:#34d399">${todayRet.length}</div>
+      </div>
+      <div style="background:#2d2a1a;border-radius:6px;padding:10px;text-align:center;cursor:pointer" onclick="nav('eq-status')">
+        <div style="font-size:11px;color:#fbbf24">明日返却</div><div style="font-size:22px;font-weight:700;color:#fbbf24">${tomRet.length}</div>
+      </div>
+      <div style="background:#3a1a1a;border-radius:6px;padding:10px;text-align:center;cursor:pointer" onclick="filterEqStatus('返却待ち')">
+        <div style="font-size:11px;color:#f87171">未返却</div><div style="font-size:22px;font-weight:700;color:#f87171">${over.length}</div>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('db-alerts').innerHTML=`<div class="card">
+    <h3>⚠️ メンテナンス・確認中</h3>
+    ${[...maint,...lost].map(e=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openDetail('${e.id}')">
+      ${getIcon(e.cat,e.color,24,e.id)}
+      <div style="flex:1"><div style="font-size:12px;font-weight:600">${e.name}</div><div style="font-size:11px;color:#64748b">${e.location}</div></div>
+      ${ebdg(e.status)}
+    </div>`).join('')||'<div class="empty" style="padding:12px">なし</div>'}
+  </div>`;
+}
+
+function filterEqStatus(s){
+  nav('eq-status');
+  setTimeout(()=>{ const el=document.getElementById('qs-st'); if(el){el.value=s;renderEqStatus();} },100);
+}
+
+// ═══════════════════════════════════════════════
+//  EQUIPMENT STATUS
+// ═══════════════════════════════════════════════
+let eqView = 'card'; // 'card' | 'list'
+
+function toggleEqView(){
+  eqView = eqView==='card'?'list':'card';
+  document.getElementById('qs-view-btn').textContent = eqView==='card'?'📋 リスト':'🃏 カード';
+  renderEqStatus();
+}
+
+function renderEqStatus(){
+  // Populate selects
+  const stSel=document.getElementById('qs-st');
+  if(stSel.options.length<=1){ mStatus.forEach(s=>{const o=document.createElement('option');o.textContent=s.name;stSel.appendChild(o);}); }
+  const catSel=document.getElementById('qs-cat');
+  if(catSel.options.length<=1){ mCat.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;catSel.appendChild(o);}); }
+  const ownSel=document.getElementById('qs-own');
+  if(ownSel.options.length<=1){ mOwn.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;ownSel.appendChild(o);}); }
+
+  // Chips
+  const chipEl=document.getElementById('qs-chips');
+  if(!chipEl.innerHTML){ chipEl.innerHTML=mStatus.map(s=>`<span class="chip" onclick="toggleChip(this,'${s.name}')">${s.name}</span>`).join(''); }
+
+  const q=(document.getElementById('qs-q').value||'').toLowerCase();
+  const st=document.getElementById('qs-st').value;
+  const cat=document.getElementById('qs-cat').value;
+  const own=document.getElementById('qs-own').value;
+  const base=document.getElementById('qs-base').value;
+  const chips=[...document.querySelectorAll('#qs-chips .chip.on')].map(c=>c.textContent);
+
+  const list = equipment.filter(e=>{
+    if(q&&!`${e.name}${e.model}${e.serial}`.toLowerCase().includes(q)) return false;
+    if(st&&e.status!==st) return false;
+    if(cat&&e.cat!==cat) return false;
+    if(own&&e.own!==own) return false;
+    if(base&&e.base!==base) return false;
+    if(chips.length&&!chips.includes(e.status)) return false;
+    return true;
+  });
+
+  const body=document.getElementById('eq-status-body');
+  if(!list.length){ body.innerHTML='<div class="empty">該当機材なし</div>'; return; }
+
+  if(eqView==='card'){
+    body.innerHTML=`<div class="eq-cards">${list.map(e=>{
+      const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+      return `<div class="eq-card" onclick="openDetail('${e.id}')">
+        <div class="ec-icon" style="background:${e.color}22">${getIcon(e.cat,e.color,44,e.id)}</div>
+        <div class="ec-name">${e.name}</div>
+        <div class="ec-sub">${e.model}</div>
+        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:4px">${ebdg(e.status)}${baseBdg(e.base)}</div>
+        <div class="ec-loc">${e.location||'—'}</div>
+        ${sl?`<div style="font-size:10px;color:#818cf8;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sl.event}</div>`:''}
+      </div>`;
+    }).join('')}</div>`;
+  } else {
+    body.innerHTML=`<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th width="44"></th><th>機材名</th><th>型番</th><th>管理番号</th>
+      <th>ステータス</th><th>拠点</th><th>現在地</th><th>保有者</th>
+      <th>使用中イベント</th><th>返却予定</th>
+    </tr></thead><tbody>${list.map(e=>{
+      const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+      return `<tr onclick="openDetail('${e.id}')">
+        <td>${getIcon(e.cat,e.color,30,e.id)}</td>
+        <td style="font-weight:600">${e.name}</td>
+        <td style="color:#94a3b8">${e.model}</td>
+        <td style="color:#64748b;font-size:12px">${e.serial}</td>
+        <td>${ebdg(e.status)}</td>
+        <td>${baseBdg(e.base)||'—'}</td>
+        <td>${e.location||'<span style="color:#f87171">未設定</span>'}</td>
+        <td style="font-size:12px">${e.holder||'—'}</td>
+        <td style="font-size:12px;color:#818cf8">${sl?sl.event:'—'}</td>
+        <td style="font-size:12px">${sl?fmtF(sl.retPlan):'—'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+}
+
+function toggleChip(el,val){
+  el.classList.toggle('on');
+  const st=document.getElementById('qs-st');
+  if(el.classList.contains('on')) st.value=val;
+  else st.value='';
+  renderEqStatus();
+}
+
+// ═══════════════════════════════════════════════
+//  DETAIL
+// ═══════════════════════════════════════════════
+function openDetail(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  prevView=currentView;
+  nav('detail');
+  const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+  const hist=historyLog.filter(h=>h.eqId===id).sort((a,b)=>b.dt.localeCompare(a.dt));
+  const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635'};
+  document.getElementById('detail-body').innerHTML=`
+    <div class="dh">
+      ${getIcon(e.cat,e.color,56,e.id)}
+      <div>
+        <h2>${e.name}</h2>
+        <div class="dsub">${e.model} | ${e.serial} | ${e.cat} | ${e.own}</div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          ${ebdg(e.status)}
+          <button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId||''}')">伝票を見る</button>
+        </div>
+      </div>
+    </div>
+    <div class="card mb12">
+      <div class="ig">
+        <div><div class="ik">現在地</div><div class="iv">${e.location||'—'}</div></div>
+        <div><div class="ik">保有者</div><div class="iv">${e.holder||'—'}</div></div>
+        <div><div class="ik">使用中イベント</div><div class="iv" style="color:#818cf8">${sl?sl.event:'—'}</div></div>
+        <div><div class="ik">返却予定日</div><div class="iv">${sl?fmtF(sl.retPlan):'—'}</div></div>
+        <div><div class="ik">管理場所</div><div class="iv">${e.defLoc}</div></div>
+        <div><div class="ik">在庫数</div><div class="iv">${e.qty}</div></div>
+        <div><div class="ik">メーカー</div><div class="iv">${e.maker||'—'}</div></div>
+        <div><div class="ik">所有区分</div><div class="iv">${e.own}</div></div>
+      </div>
+      ${e.notes?`<div style="font-size:12px;color:#94a3b8;border-top:1px solid #252840;padding-top:8px;margin-top:4px">📝 ${e.notes}</div>`:''}
+    </div>
+    <div class="card">
+      <h3>移動履歴</h3>
+      ${hist.length?`<div class="tline">${hist.map(h=>`<div class="tl">
+        <div class="tdt">${fmtDT(h.dt)}</div>
+        <div class="top" style="color:${opC[h.op]||'#94a3b8'}">${h.op}</div>
+        <div class="tdet">${h.from}→${h.to}${h.fromP?` / ${h.fromP}→${h.toP||''}`:''}</div>
+        ${h.slip?`<div class="tdet" style="color:#818cf8">${slips.find(s=>s.id===h.slip)?.event||h.slip}</div>`:''}
+      </div>`).join('')}</div>`:'<div class="empty">履歴なし</div>'}
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════
+//  SCHEDULE
+// ═══════════════════════════════════════════════
+function schedTab(btn,id){
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#v-schedule .tp').forEach(p=>p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById(id).classList.add('on');
+  if(id==='s-cal') initCalendar();
+  if(id==='s-grid') renderSchedGrid();
+}
+
+function renderSchedule(){
+  initCalendar();
+  // Populate grid cat
+  const s=document.getElementById('sg-cat');
+  if(s.options.length<=1) mCat.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;s.appendChild(o);});
+  if(!document.getElementById('sg-month').value) document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
+}
+
+const SLIP_COLORS={'仮登録':'#475569','準備中':'#3b82f6','出庫済み':'#7c3aed','使用中':'#4f46e5','返却待ち':'#d97706','返却済み':'#059669','未返却':'#dc2626','キャンセル':'#374151'};
+
+function initCalendar(){
+  if(calInstance) return;
+  const el=document.getElementById('fc-cal');
+  if(!el||typeof FullCalendar==='undefined') return;
+  const events=slips.filter(s=>s.start).map(s=>({
+    id:s.id,title:s.event,start:s.start,end:s.end||s.start,
+    color:SLIP_COLORS[s.status]||'#6366f1',
+    extendedProps:{slip:s}
+  }));
+  calInstance=new FullCalendar.Calendar(el,{
+    locale:'ja',initialView:'dayGridMonth',height:'auto',
+    headerToolbar:{left:'prev,next today',center:'title',right:'dayGridMonth,timeGridWeek'},
+    events,
+    eventClick:({event})=>{ openSlipDetail(event.id); },
+  });
+  calInstance.render();
+}
+
+function renderSchedGrid(){
+  const mv=document.getElementById('sg-month').value;
+  if(!mv) return;
+  const [y,m]=mv.split('-').map(Number);
+  const days=new Date(y,m,0).getDate();
+  const catF=document.getElementById('sg-cat').value;
+  const list=equipment.filter(e=>!catF||e.cat===catF);
+  const nums=Array.from({length:days},(_,i)=>i+1);
+  const hdr=`<tr><th style="min-width:150px;position:sticky;left:0;background:#13151f;z-index:1">機材</th>${nums.map(d=>{
+    const dd=new Date(y,m-1,d);
+    const isSun=dd.getDay()===0,isSat=dd.getDay()===6;
+    return `<th style="width:22px;text-align:center;font-size:10px;padding:3px 1px;color:${isSun?'#f87171':isSat?'#60a5fa':'#64748b'}">${d}</th>`;
+  }).join('')}</tr>`;
+  const rows=list.map(e=>{
+    const eSlips=slipItems.filter(i=>i.eqId===e.id).map(i=>slips.find(s=>s.id===i.slipId)).filter(Boolean);
+    const cells=nums.map(d=>{
+      const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const hit=eSlips.find(s=>s.start&&s.end&&ds>=s.start.slice(0,10)&&ds<=s.end.slice(0,10));
+      return `<td style="padding:1px;${hit?'background:'+SLIP_COLORS[hit.status]+'33':''}">${hit?`<div style="width:18px;height:12px;background:${SLIP_COLORS[hit.status]};border-radius:2px;margin:auto;cursor:pointer" title="${hit.event}" onclick="openSlipDetail('${hit.id}')"></div>`:''}</td>`;
+    }).join('');
+    return `<tr><td style="padding:5px 8px;white-space:nowrap;position:sticky;left:0;background:#13151f;border-bottom:1px solid #1a1d27">
+      <div style="display:flex;align-items:center;gap:6px">
+        ${getIcon(e.cat,e.color,20,e.id)}
+        <div><div style="font-size:12px;font-weight:600">${e.name}</div><div style="font-size:10px;color:#64748b">${e.model}</div></div>
+      </div></td>${cells}</tr>`;
+  }).join('');
+  document.getElementById('sched-grid-body').innerHTML=`<table class="tbl">${hdr}<tbody>${rows}</tbody></table>`;
+}
+
+// ═══════════════════════════════════════════════
+//  SLIP
+// ═══════════════════════════════════════════════
+let editingSlipId=null;
+
+function showSlipList(){ document.getElementById('slip-list-panel').style.display=''; document.getElementById('slip-form-panel').style.display='none'; document.getElementById('slip-detail-panel').style.display='none'; }
+function closeSlipForm(){ showSlipList(); renderSlipList(); editingSlipId=null; }
+function closeSlipDetail(){ showSlipList(); renderSlipList(); }
+
+function renderSlipList(){
+  const stSel=document.getElementById('sl-st');
+  if(stSel.options.length<=1){ ['仮登録','準備中','出庫済み','使用中','返却待ち','返却済み','未返却','キャンセル'].forEach(s=>{const o=document.createElement('option');o.textContent=s;stSel.appendChild(o);}); }
+  const q=(document.getElementById('sl-q').value||'').toLowerCase();
+  const st=document.getElementById('sl-st').value;
+  const list=slips.filter(s=>{
+    if(q&&!`${s.event}${s.loc}${s.person}${s.client}`.toLowerCase().includes(q)) return false;
+    if(st&&s.status!==st) return false;
+    return true;
+  }).sort((a,b)=>b.start.localeCompare(a.start));
+  document.getElementById('slip-list-body').innerHTML=list.length?list.map(s=>{
+    const cnt=slipItems.filter(i=>i.slipId===s.id).length;
+    return `<tr onclick="openSlipDetail('${s.id}')">
+      <td>${sbdg(s.status)}</td>
+      <td style="font-weight:600">${s.event}</td>
+      <td style="color:#94a3b8">${s.loc}</td>
+      <td style="color:#94a3b8">${s.person}</td>
+      <td style="font-size:12px">${fmt(s.start)}〜${fmt(s.end)}</td>
+      <td style="font-size:12px">${fmtF(s.checkout)||'—'}</td>
+      <td style="font-size:12px">${fmtF(s.retPlan)||'—'}</td>
+      <td style="font-size:12px;color:#818cf8">${cnt}点</td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="8" class="empty">伝票なし</td></tr>`;
+}
+
+function openSlipDetail(id){
+  if(!id) return;
+  const s=slips.find(x=>x.id===id);
+  if(!s){ if(currentView==='detail'||currentView==='dashboard') return; return; }
+  if(currentView!=='slip'){ nav('slip'); setTimeout(()=>openSlipDetail(id),200); return; }
+  document.getElementById('slip-list-panel').style.display='none';
+  document.getElementById('slip-form-panel').style.display='none';
+  document.getElementById('slip-detail-panel').style.display='';
+  const items=slipItems.filter(i=>i.slipId===id);
+  document.getElementById('slip-detail-body').innerHTML=`
+    <div class="g2 mb12">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>${sbdg(s.status)}</div>
+          <button class="btn btn-s btn-sm" onclick="openSlipForm('${s.id}')">編集</button>
+        </div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">${s.event}</div>
+        <div class="ig">
+          <div><div class="ik">クライアント</div><div class="iv">${s.client||'—'}</div></div>
+          <div><div class="ik">場所</div><div class="iv">${s.loc}</div></div>
+          <div><div class="ik">担当者</div><div class="iv">${s.person}</div></div>
+          <div><div class="ik">使用日時</div><div class="iv">${fmtDT(s.start)} 〜 ${fmtDT(s.end)}</div></div>
+          <div><div class="ik">出庫日</div><div class="iv">${fmtF(s.checkout)||'—'}</div></div>
+          <div><div class="ik">返却予定</div><div class="iv">${fmtF(s.retPlan)||'—'}</div></div>
+          <div><div class="ik">実返却日</div><div class="iv">${fmtF(s.retActual)||'—'}</div></div>
+        </div>
+        ${s.notes?`<div style="font-size:12px;color:#94a3b8;border-top:1px solid #252840;padding-top:8px;margin-top:4px">📝 ${s.notes}</div>`:''}
+      </div>
+      <div class="card">
+        <h3>使用機材（${items.length}点）</h3>
+        ${items.map(i=>{
+          const eq=i.eqId?equipment.find(e=>e.id===i.eqId):null;
+          return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1a1d27">
+            ${eq?getIcon(eq.cat,eq.color,26,eq.id):'<div style="width:26px;height:26px;background:#252840;border-radius:4px"></div>'}
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600">${i.name} <span style="font-size:11px;color:#64748b">×${i.qty}</span></div>
+              <div style="font-size:11px;color:#64748b">${fmt(i.start)}〜${fmt(i.end)}</div>
+            </div>
+            ${ibdg(i.type)}
+          </div>`;
+        }).join('')||'<div class="empty" style="padding:12px">機材未登録</div>'}
+      </div>
+    </div>
+  `;
+}
+
+function openSlipForm(id=''){
+  // ensure we are in slip view
+  if(currentView!=='slip'){ nav('slip'); setTimeout(()=>openSlipForm(id),200); return; }
+  editingSlipId=id||null;
+  document.getElementById('slip-list-panel').style.display='none';
+  document.getElementById('slip-detail-panel').style.display='none';
+  document.getElementById('slip-form-panel').style.display='';
+  document.getElementById('slip-form-title').textContent=id?'出庫伝票 編集':'出庫伝票 新規登録';
+  document.getElementById('sf-del-btn').style.display=id?'':'none';
+  document.getElementById('sf-items').innerHTML='';
+  sfItemCount=0;
+
+  const s=id?slips.find(x=>x.id===id):null;
+  document.getElementById('sf-event').value=s?s.event:'';
+  document.getElementById('sf-client').value=s?s.client:'';
+  document.getElementById('sf-loc').value=s?s.loc:'';
+  document.getElementById('sf-person').value=s?s.person:'';
+  document.getElementById('sf-start').value=s&&s.start?s.start.slice(0,16):'';
+  document.getElementById('sf-end').value=s&&s.end?s.end.slice(0,16):'';
+  document.getElementById('sf-checkout').value=s?s.checkout:'';
+  document.getElementById('sf-ret-plan').value=s?s.retPlan:'';
+  document.getElementById('sf-ret-actual').value=s?s.retActual:'';
+  document.getElementById('sf-status').value=s?s.status:'仮登録';
+  document.getElementById('sf-notes').value=s?s.notes:'';
+  if(id){
+    slipItems.filter(i=>i.slipId===id).forEach(i=>addSlipItem(i.type,i));
+  }
+  document.getElementById('slip-form-panel').scrollIntoView({behavior:'smooth'});
+}
+
+let sfItemCount=0;
+function addSlipItem(type,data=null){
+  sfItemCount++;
+  const rowId='sfi-'+sfItemCount;
+  const eqOptions=equipment.map(e=>`<option value="${e.id}">${e.name} (${e.model})</option>`).join('');
+  const isOwn=type==='own';
+  const div=document.createElement('div');
+  div.className='si-row'; div.id=rowId; div.dataset.type=type;
+  div.innerHTML=`
+    ${ibdg(type)}
+    <div>${isOwn
+      ?`<select class="si-eq" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none"><option value="">選択…</option>${eqOptions}</select>`
+      :`<input class="si-name" placeholder="機材名を入力" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none" value="${data?data.name:''}">`
+    }</div>
+    <input type="number" class="si-qty" value="${data?data.qty:1}" min="1" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
+    <input type="datetime-local" class="si-start" value="${data?data.start.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
+    <input type="datetime-local" class="si-end" value="${data?data.end.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
+    <input class="si-note" placeholder="備考" value="${data?data.notes:''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
+    <button class="btn btn-d btn-xs" onclick="document.getElementById('${rowId}').remove()">✕</button>
+  `;
+  document.getElementById('sf-items').appendChild(div);
+  if(data&&isOwn){ const sel=div.querySelector('.si-eq'); if(sel) sel.value=data.eqId||''; }
+}
+
+function saveSlip(){
+  const name=document.getElementById('sf-event').value.trim();
+  if(!name){ alert('イベント名は必須です'); return; }
+  const id=editingSlipId||('SL'+Date.now());
+  const slip={
+    id,event:name,client:document.getElementById('sf-client').value,
+    loc:document.getElementById('sf-loc').value,person:document.getElementById('sf-person').value,
+    start:document.getElementById('sf-start').value,end:document.getElementById('sf-end').value,
+    checkout:document.getElementById('sf-checkout').value,
+    retPlan:document.getElementById('sf-ret-plan').value,
+    retActual:document.getElementById('sf-ret-actual').value,
+    status:document.getElementById('sf-status').value,
+    notes:document.getElementById('sf-notes').value,
+  };
+  if(editingSlipId){ const i=slips.findIndex(s=>s.id===editingSlipId); if(i>=0) slips[i]=slip; }
+  else slips.push(slip);
+
+  // Remove old items
+  const removeIds=slipItems.filter(i=>i.slipId===id).map(i=>i.id);
+  removeIds.forEach(rid=>{ const idx=slipItems.findIndex(i=>i.id===rid); if(idx>=0) slipItems.splice(idx,1); });
+
+  // Save new items & update equipment
+  document.querySelectorAll('#sf-items .si-row').forEach(row=>{
+    const type=row.dataset.type;
+    const isOwn=type==='own';
+    const eqSel=row.querySelector('.si-eq');
+    const namEl=row.querySelector('.si-name');
+    const eqId=isOwn&&eqSel?eqSel.value:'';
+    const iname=isOwn&&eqSel?eqSel.options[eqSel.selectedIndex]?.text||'':namEl?namEl.value:'';
+    const qty=parseInt(row.querySelector('.si-qty').value)||1;
+    const start=row.querySelector('.si-start').value;
+    const end=row.querySelector('.si-end').value;
+    const notes=row.querySelector('.si-note').value;
+    const item={id:'SI'+Date.now()+Math.random(),slipId:id,type,eqId:eqId||null,name:iname,qty,start,end,notes};
+    slipItems.push(item);
+    // Update equipment status
+    if(eqId){
+      const eq=equipment.find(e=>e.id===eqId);
+      if(eq){
+        eq.slipId=id;
+        if(['出庫済み','使用中'].includes(slip.status)){ eq.status='貸出中'; eq.location=slip.loc; eq.holder=slip.person; }
+        else if(slip.status==='返却待ち'){ eq.status='返却待ち'; }
+        else if(slip.status==='返却済み'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; eq.slipId=''; }
+      }
+    }
+  });
+  // Refresh calendar
+  if(calInstance){ calInstance.destroy(); calInstance=null; }
+  saveToLocal();
+  alert('保存しました');
+  closeSlipForm();
+}
+
+function deleteSlip(){
+  if(!editingSlipId||!confirm('この伝票を削除しますか？')) return;
+  const i=slips.findIndex(s=>s.id===editingSlipId);
+  if(i>=0) slips.splice(i,1);
+  slipItems.filter(i=>i.slipId===editingSlipId).forEach(item=>{ const idx=slipItems.indexOf(item); if(idx>=0) slipItems.splice(idx,1); });
+  if(calInstance){ calInstance.destroy(); calInstance=null; }
+  saveToLocal();
+  closeSlipForm();
+}
+
+// ═══════════════════════════════════════════════
+//  EQUIPMENT REGISTRATION
+// ═══════════════════════════════════════════════
+let editingEqId=null;
+
+function renderEqReg(){
+  const catSel=document.getElementById('er-cat');
+  if(catSel.options.length<=1) mCat.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;catSel.appendChild(o);});
+  const q=(document.getElementById('er-q').value||'').toLowerCase();
+  const cat=document.getElementById('er-cat').value;
+  const list=equipment.filter(e=>{
+    if(q&&!`${e.name}${e.model}${e.serial}`.toLowerCase().includes(q)) return false;
+    if(cat&&e.cat!==cat) return false;
+    return true;
+  }).sort((a,b)=>a.sort-b.sort);
+  document.getElementById('er-body').innerHTML=list.map(e=>`<tr>
+    <td>${getIcon(e.cat,e.color,30,e.id)}</td>
+    <td style="font-weight:600">${e.name}${e.fav?'<span style="color:#fbbf24;margin-left:4px">★</span>':''}</td>
+    <td style="color:#94a3b8">${e.model}</td>
+    <td style="color:#64748b;font-size:12px">${e.serial}</td>
+    <td style="font-size:12px">${e.cat}</td>
+    <td><span class="bdg ${IBADGE[e.own==='自社機材'?'own':e.own==='他社機材'?'external':'rental']||'b-draft'}">${e.own}</span></td>
+    <td style="font-size:12px;color:#94a3b8">${e.defLoc}</td>
+    <td style="font-size:12px">${e.qty}</td>
+    <td><button class="btn btn-s btn-xs" onclick="openEqForm('${e.id}')">編集</button></td>
+  </tr>`).join('');
+}
+
+function openEqForm(id=''){
+  editingEqId=id||null;
+  document.getElementById('eq-form-panel').style.display='';
+  document.getElementById('eq-form-title').textContent=id?'機材編集':'機材登録';
+  document.getElementById('ef-del-btn').style.display=id?'':'none';
+
+  // Populate selects from master
+  const efCat=document.getElementById('ef-cat');
+  efCat.innerHTML=mCat.map(c=>`<option>${c.name}</option>`).join('');
+  const efOwn=document.getElementById('ef-own');
+  efOwn.innerHTML=mOwn.map(o=>`<option>${o.name}</option>`).join('');
+  const efLoc=document.getElementById('ef-loc');
+  efLoc.innerHTML=mLoc.map(l=>`<option>${l.name}</option>`).join('');
+  const efIconKey=document.getElementById('ef-icon-key');
+  efIconKey.innerHTML=`<option value="">種別に従う</option>`+mIcons.map(i=>`<option value="${i.key}">${i.label}</option>`).join('');
+
+  pendingEfIcon=null;
+  document.getElementById('ef-icon-ph').style.display='block';
+  document.getElementById('ef-icon-preview').style.display='none';
+
+  const e=id?equipment.find(x=>x.id===id):null;
+  document.getElementById('ef-id').value=id;
+  document.getElementById('ef-name').value=e?e.name:'';
+  document.getElementById('ef-model').value=e?e.model:'';
+  document.getElementById('ef-serial').value=e?e.serial:'';
+  document.getElementById('ef-maker').value=e?e.maker:'';
+  document.getElementById('ef-qty').value=e?e.qty:1;
+  document.getElementById('ef-cat').value=e?e.cat:mCat[0]?.name||'';
+  document.getElementById('ef-own').value=e?e.own:mOwn[0]?.name||'';
+  document.getElementById('ef-loc').value=e?e.defLoc:mLoc[0]?.name||'';
+  document.getElementById('ef-base').value=e?e.base||'':'';
+  document.getElementById('ef-icon-key').value=e?e.iconKey||'':'';
+  document.getElementById('ef-color').value=e?e.color:'#60a5fa';
+  document.getElementById('ef-fav').checked=e?e.fav:false;
+  document.getElementById('ef-notes').value=e?e.notes:'';
+  if(id&&customIcons[id]){
+    document.getElementById('ef-icon-img').src=customIcons[id];
+    document.getElementById('ef-icon-ph').style.display='none';
+    document.getElementById('ef-icon-preview').style.display='flex';
+  }
+  document.getElementById('eq-form-panel').scrollIntoView({behavior:'smooth'});
+}
+
+function closeEqForm(){ document.getElementById('eq-form-panel').style.display='none'; editingEqId=null; }
+
+function saveEq(){
+  const name=document.getElementById('ef-name').value.trim();
+  const model=document.getElementById('ef-model').value.trim();
+  if(!name||!model){ alert('機材名と型番は必須です'); return; }
+  const id=editingEqId||('E'+String(equipment.length+100).padStart(3,'0'));
+  if(pendingEfIcon) customIcons[id]=pendingEfIcon;
+  const defLoc=document.getElementById('ef-loc').value;
+  const data={
+    id,name,model,serial:document.getElementById('ef-serial').value,
+    maker:document.getElementById('ef-maker').value,
+    qty:parseInt(document.getElementById('ef-qty').value)||1,
+    cat:document.getElementById('ef-cat').value,
+    own:document.getElementById('ef-own').value,
+    base:document.getElementById('ef-base').value,
+    iconKey:document.getElementById('ef-icon-key').value,
+    defLoc,
+    color:document.getElementById('ef-color').value,
+    sort:equipment.length+1,
+    fav:document.getElementById('ef-fav').checked,
+    notes:document.getElementById('ef-notes').value,
+    status:'在庫あり',location:defLoc,holder:'',slipId:'',
+  };
+  if(editingEqId){ const i=equipment.findIndex(e=>e.id===editingEqId); if(i>=0){ Object.assign(equipment[i],data); } }
+  else equipment.push(data);
+  saveToLocal();
+  alert('保存しました');
+  closeEqForm();
+  renderEqReg();
+}
+
+function deleteEq(){
+  if(!editingEqId||!confirm('この機材を削除しますか？')) return;
+  const i=equipment.findIndex(e=>e.id===editingEqId);
+  if(i>=0) equipment.splice(i,1);
+  saveToLocal();
+  closeEqForm(); renderEqReg();
+}
+
+function handleEfIcon(event){
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    pendingEfIcon=e.target.result;
+    document.getElementById('ef-icon-img').src=pendingEfIcon;
+    document.getElementById('ef-icon-ph').style.display='none';
+    document.getElementById('ef-icon-preview').style.display='flex';
+  };
+  reader.readAsDataURL(file);
+}
+function clearEfIcon(evt){ evt.stopPropagation(); pendingEfIcon=null; document.getElementById('ef-icon-file').value=''; document.getElementById('ef-icon-ph').style.display='block'; document.getElementById('ef-icon-preview').style.display='none'; }
+
+// ═══════════════════════════════════════════════
+//  SETTINGS
+// ═══════════════════════════════════════════════
+function settTab(btn,id){
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#v-settings .tp').forEach(p=>p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById(id).classList.add('on');
+  renderSettBody(id.replace('st-',''));
+}
+
+function renderSettings(){ renderSettBody('icon'); }
+
+// ═══════════════════════════════════════════════
+//  ICON MANAGER
+// ═══════════════════════════════════════════════
+function iconTab(btn,id){
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('#v-icons .tp').forEach(p=>p.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById(id).classList.add('on');
+  if(id==='ic-keys') renderIconKeyList();
+}
+
+function renderIconManager(){ renderIconKeyList(); }
+
+function renderIconKeyList(){
+  const el=document.getElementById('ic-keys-body');
+  if(!el) return;
+  el.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:8px">
+      ${mIcons.map((ic,idx)=>{
+        const hasCustom=!!customIconsByKey[ic.key];
+        return `<div style="background:#1a1d27;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:10px;padding:14px;text-align:center;position:relative">
+          ${idx>=10?`<button onclick="deleteIconKey(${idx})" style="position:absolute;top:6px;right:6px;background:none;border:none;color:#475569;cursor:pointer;font-size:12px" title="削除">✕</button>`:''}
+          <div style="width:56px;height:56px;margin:0 auto 10px">${getIcon(ic.key,'#818cf8',56)}</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${ic.label}</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;min-height:16px">${ic.desc||''}</div>
+          <code style="font-size:10px;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:2px 8px;color:#94a3b8">${ic.key}</code>
+          <div style="display:flex;gap:6px;justify-content:center;margin-top:10px">
+            <label class="btn btn-s btn-xs" style="cursor:pointer" title="カスタム画像をアップロード">
+              📷 画像変更
+              <input type="file" accept="image/*" style="display:none" onchange="uploadIconByKey('${ic.key}',event)">
+            </label>
+            ${hasCustom?`<button class="btn btn-d btn-xs" onclick="clearIconByKey('${ic.key}')" title="カスタム画像を削除">リセット</button>`:''}
+          </div>
+          ${hasCustom?'<div style="font-size:10px;color:#6366f1;margin-top:6px">✓ カスタム画像</div>':'<div style="font-size:10px;color:#475569;margin-top:6px">SVGアイコン</div>'}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function deleteIconKey(idx){
+  if(!confirm('このアイコンキーを削除しますか？\n機材に割り当てている場合は解除されます。')) return;
+  const key=mIcons[idx]?.key;
+  mIcons.splice(idx,1);
+  if(key) delete customIconsByKey[key];
+  renderIconKeyList();
+  saveToLocal();
+}
+
+let pendingNicIcon=null;
+function handleNicIcon(event){
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    pendingNicIcon=e.target.result;
+    document.getElementById('nic-img').src=pendingNicIcon;
+    document.getElementById('nic-ph').style.display='none';
+    document.getElementById('nic-preview').style.display='flex';
+  };
+  reader.readAsDataURL(file);
+}
+function clearNicIcon(evt){
+  evt.stopPropagation();
+  pendingNicIcon=null;
+  document.getElementById('nic-file').value='';
+  document.getElementById('nic-ph').style.display='block';
+  document.getElementById('nic-preview').style.display='none';
+}
+function clearNewIconKeyForm(){
+  document.getElementById('nic-key').value='';
+  document.getElementById('nic-label').value='';
+  document.getElementById('nic-desc').value='';
+  clearNicIcon({stopPropagation:()=>{}});
+}
+function saveNewIconKey(){
+  const key=document.getElementById('nic-key').value.trim();
+  const label=document.getElementById('nic-label').value.trim()||key;
+  const desc=document.getElementById('nic-desc').value.trim();
+  if(!key){alert('キー名を入力してください');return;}
+  if(mIcons.find(i=>i.key===key)){alert('同じキーが既に存在します');return;}
+  mIcons.push({id:'i'+Date.now(),key,label,desc});
+  if(pendingNicIcon) customIconsByKey[key]=pendingNicIcon;
+  clearNewIconKeyForm();
+  // Switch to list tab
+  const tabs=document.querySelectorAll('#v-icons .tab');
+  const tp=document.querySelectorAll('#v-icons .tp');
+  tabs.forEach(t=>t.classList.remove('on')); tp.forEach(p=>p.classList.remove('on'));
+  tabs[0].classList.add('on'); tp[0].classList.add('on');
+  renderIconKeyList();
+  saveToLocal();
+  alert('「'+label+'」を登録しました');
+}
+
+function renderSettBody(type){
+  if(type==='icon'){ renderIconSettings(); return; }
+  const map={
+    cat:{data:mCat,el:'stt-cat-body',fields:['name','icon','color']},
+    loc:{data:mLoc,el:'stt-loc-body',fields:['name','base']},
+    status:{data:mStatus,el:'stt-status-body',fields:['name','cls']},
+    own:{data:mOwn,el:'stt-own-body',fields:['name']},
+    color:{data:mColors,el:'stt-color-body',fields:['name','code']},
+  };
+  const {data,el,fields}=map[type];
+  if(!data||!el) return;
+  const hdrLabels={name:'名前',icon:'アイコンキー',color:'デフォルト色',cls:'バッジクラス',code:'カラーコード',base:'拠点'};
+
+  // For cat, icon field uses a select of mIcons
+  const iconOpts = mIcons.map(i=>`<option value="${i.key}">${i.label}</option>`).join('');
+
+  // Build rows without nested backticks
+  const hdrHtml = '<div style="display:flex;gap:8px;padding:6px 0;font-size:11px;color:#64748b;border-bottom:1px solid #252840;margin-bottom:4px">'
+    + fields.map(function(f){ return '<div style="flex:1">' + (hdrLabels[f]||f) + '</div>'; }).join('')
+    + '<div style="width:60px"></div></div>';
+
+  const rowsHtml = data.map(function(row,idx){
+    const cells = fields.map(function(f){
+      const val = row[f]||'';
+      const onb = "updateSett('" + type + "'," + idx + ",'" + f + "',this.value)";
+      if(f==='icon'){
+        const opts = mIcons.map(function(i){ return '<option value="' + i.key + '"' + (i.key===val?' selected':'') + '>' + i.label + '</option>'; }).join('');
+        return '<select style="flex:1;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none" onchange="' + onb + '">' + opts + '</select>';
+      }
+      if(f==='color'||f==='code'){
+        return '<div style="display:flex;gap:4px;flex:1">'
+          + '<input value="' + val + '" onblur="' + onb + '">'
+          + '<input type="color" value="' + (val||'#ffffff') + '" style="width:32px;padding:1px;border:1px solid #252840;border-radius:4px;background:#0f1117" onchange="' + onb + '">'
+          + '</div>';
+      }
+      return '<input value="' + val + '" onblur="' + onb + '">';
+    }).join('');
+    return '<div class="st-row" id="srow-' + type + '-' + idx + '">'
+      + cells
+      + '<button class="btn btn-d btn-xs" onclick="deleteSett(\'' + type + '\',' + idx + ')">削除</button>'
+      + '</div>';
+  }).join('');
+
+  document.getElementById(el).innerHTML = hdrHtml + rowsHtml;
+}
+
+function renderIconSettings(){
+  const el = document.getElementById('stt-icon-body');
+  if(!el) return;
+  el.innerHTML = `
+    <p style="font-size:12px;color:#64748b;margin-bottom:12px">アイコンキーは機材・種別に割り当てるアイコンの識別名です。カスタム画像をアップロードするとそのキーを持つ全機材のアイコンが変わります。</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px">
+      ${mIcons.map((ic)=>{
+        const hasCustom = !!customIconsByKey[ic.key];
+        return `<div style="background:#0f1117;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:8px;padding:12px;text-align:center">
+          <div style="width:44px;height:44px;margin:0 auto">${getIcon(ic.key,'#818cf8',44)}</div>
+          <div style="font-size:13px;font-weight:600;margin-top:8px;margin-bottom:2px">${ic.label}</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:6px">${ic.desc||'—'}</div>
+          <div style="font-size:10px;background:#252840;border-radius:3px;padding:2px 6px;display:inline-block;color:#94a3b8;font-family:monospace;margin-bottom:8px">${ic.key}</div>
+          <div style="display:flex;gap:4px;justify-content:center">
+            <label class="btn btn-s btn-xs" style="cursor:pointer" title="画像をアップロード">
+              📷 画像
+              <input type="file" accept="image/*" style="display:none" onchange="uploadIconByKey('${ic.key}',event)">
+            </label>
+            ${hasCustom?`<button class="btn btn-d btn-xs" onclick="clearIconByKey('${ic.key}')" title="カスタム画像を削除">✕</button>`:''}
+          </div>
+          ${hasCustom?`<div style="font-size:10px;color:#6366f1;margin-top:4px">カスタム画像設定済み</div>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="background:#1a1d27;border:1px solid #252840;border-radius:8px;padding:14px">
+      <h3 style="margin-bottom:10px">アイコンキーを追加</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="new-icon-key" placeholder="キー名（例: DI-BOX）" style="flex:1;min-width:120px;background:#0f1117;border:1px solid #252840;border-radius:6px;padding:7px 10px;color:#e2e8f0;font-size:13px;outline:none">
+        <input id="new-icon-label" placeholder="表示名（例: DI ボックス）" style="flex:1;min-width:120px;background:#0f1117;border:1px solid #252840;border-radius:6px;padding:7px 10px;color:#e2e8f0;font-size:13px;outline:none">
+        <input id="new-icon-desc" placeholder="説明" style="flex:1;min-width:120px;background:#0f1117;border:1px solid #252840;border-radius:6px;padding:7px 10px;color:#e2e8f0;font-size:13px;outline:none">
+        <button class="btn btn-p btn-sm" onclick="addIconKey()">＋ 追加</button>
+      </div>
+      <p style="font-size:11px;color:#475569;margin-top:6px">※ 追加後、カードの「📷 画像」から画像をアップロードするとオリジナルアイコンになります。</p>
+    </div>
+  `;
+}
+
+function uploadIconByKey(key, event){
+  const file = event.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { customIconsByKey[key] = e.target.result; renderIconSettings(); };
+  reader.readAsDataURL(file);
+}
+
+function clearIconByKey(key){
+  delete customIconsByKey[key];
+  renderIconSettings();
+}
+
+function addIconKey(){
+  const key=document.getElementById('new-icon-key').value.trim();
+  const label=document.getElementById('new-icon-label').value.trim()||key;
+  const desc=document.getElementById('new-icon-desc').value.trim();
+  if(!key){ alert('キー名を入力してください'); return; }
+  if(mIcons.find(i=>i.key===key)){ alert('同じキーが既に存在します'); return; }
+  mIcons.push({id:'i'+Date.now(),key,label,desc});
+  renderIconSettings();
+  document.getElementById('new-icon-key').value='';
+  document.getElementById('new-icon-label').value='';
+  document.getElementById('new-icon-desc').value='';
+}
+
+function updateSett(type,idx,field,val){
+  const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
+  if(map[type]&&map[type][idx]){ map[type][idx][field]=val; saveToLocal(); }
+}
+function deleteSett(type,idx){
+  const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
+  if(map[type]){ map[type].splice(idx,1); renderSettBody(type); saveToLocal(); }
+}
+function addSettRow(type){
+  const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
+  const templates={cat:{id:'c'+Date.now(),name:'新種別',icon:'周辺機器',color:'#94a3b8'},
+    loc:{id:'l'+Date.now(),name:'新場所'},status:{id:'s'+Date.now(),name:'新ステータス',cls:'b-draft'},
+    own:{id:'o'+Date.now(),name:'新区分'},color:{id:'co'+Date.now(),name:'新色',code:'#ffffff'}};
+  map[type].push(templates[type]||{id:'x'+Date.now(),name:'新項目'});
+  renderSettBody(type); saveToLocal();
+}
+
+// ═══════════════════════════════════════════════
+//  LOCAL STORAGE
+// ═══════════════════════════════════════════════
+const LS_KEY = 'kikazai_v1';
+
+function saveToLocal(){
+  try {
+    const eqWithImg = equipment.map(e => {
+      const obj = {...e};
+      if(customIcons[e.id]) obj._img = customIcons[e.id];
+      return obj;
+    });
+    const data = {
+      equipment: eqWithImg, slips, slipItems, historyLog,
+      mCat, mLoc, mStatus, mOwn, mIcons, customIconsByKey,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+  } catch(e) { console.warn('save failed', e); }
+}
+
+function loadFromLocal(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    const replaceArr = (target, src) => { if(!src) return; target.length=0; src.forEach(x=>target.push(x)); };
+    if(d.equipment){
+      equipment.length=0;
+      d.equipment.forEach(e=>{ const img=e._img; delete e._img; equipment.push(e); if(img) customIcons[e.id]=img; });
+    }
+    replaceArr(slips, d.slips);
+    replaceArr(slipItems, d.slipItems);
+    replaceArr(historyLog, d.historyLog);
+    replaceArr(mCat, d.mCat);
+    replaceArr(mLoc, d.mLoc);
+    replaceArr(mStatus, d.mStatus);
+    replaceArr(mOwn, d.mOwn);
+    replaceArr(mIcons, d.mIcons);
+    if(d.customIconsByKey) Object.assign(customIconsByKey, d.customIconsByKey);
+    return true;
+  } catch(e) { console.warn('load failed', e); return false; }
+}
+
+function clearLocalData(){
+  if(!confirm('保存中のデータをすべて削除してサンプルデータに戻しますか？\nこの操作は取り消せません。')) return;
+  localStorage.removeItem(LS_KEY);
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════
+//  CSV
+// ═══════════════════════════════════════════════
+function downloadCSV(filename, headers, rows){
+  const bom = '﻿';
+  const csv = bom + [headers, ...rows].map(r=>
+    r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')
+  ).join('\r\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportEquipmentCSV(){
+  const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','備考'];
+  const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',e.notes||'']);
+  downloadCSV('equipment.csv',headers,rows);
+}
+
+function exportSlipsCSV(){
+  const headers=['ID','イベント名','クライアント','場所','担当者','使用開始','使用終了','出庫日','返却予定日','実返却日','ステータス','備考'];
+  const rows=slips.map(s=>[s.id,s.event,s.client||'',s.loc,s.person,s.start||'',s.end||'',s.checkout||'',s.retPlan||'',s.retActual||'',s.status,s.notes||'']);
+  downloadCSV('slips.csv',headers,rows);
+}
+
+function parseCSVLine(line){
+  const result=[]; let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    if(line[i]==='"'){
+      if(inQ&&line[i+1]==='"'){cur+='"';i++;} else inQ=!inQ;
+    } else if(line[i]===','&&!inQ){result.push(cur);cur='';}
+    else cur+=line[i];
+  }
+  result.push(cur); return result;
+}
+
+function importEquipmentCSV(event){
+  const file=event.target.files[0]; if(!file) return;
+  event.target.value=''; // reset input
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+    if(lines.length<2){alert('データがありません');return;}
+    let added=0,updated=0;
+    lines.slice(1).forEach(line=>{
+      const c=parseCSVLine(line);
+      if(c.length<2||!c[1]) return;
+      const id=c[0]||('E'+Date.now());
+      const data={
+        id,name:c[1],model:c[2]||'',serial:c[3]||'',maker:c[4]||'',
+        cat:c[5]||mCat[0]?.name||'',own:c[6]||mOwn[0]?.name||'',
+        base:c[7]||'',defLoc:c[8]||mLoc[0]?.name||'',
+        qty:parseInt(c[9])||1,status:c[10]||'在庫あり',
+        location:c[11]||c[8]||'',holder:c[12]||'',notes:c[13]||'',
+        color:'#60a5fa',sort:equipment.length+1,fav:false,iconKey:'',slipId:'',
+      };
+      const idx=equipment.findIndex(e=>e.id===id);
+      if(idx>=0){Object.assign(equipment[idx],data);updated++;}
+      else{equipment.push(data);added++;}
+    });
+    alert('インポート完了：新規'+added+'件、更新'+updated+'件');
+    renderEqReg();
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+loadFromLocal(); // ← localStorageからデータを復元（なければサンプルデータを使用）
+renderDashboard();
+setTimeout(()=>{
+  document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
+},100);
+</script>
+</body>
+</html>
