@@ -1268,22 +1268,38 @@ function saveLending(id){
   openDetail(id);
 }
 
-function saveReturn(id){
+// 返却確認フォームの開閉（実返却日・返却確認者・返却後ステータス・備考を入力できるようにする）
+function toggleReturnForm(id){
+  const f=document.getElementById('return-form-'+id);
+  if(!f) return;
+  f.style.display=f.style.display==='none'?'':'none';
+}
+
+// 返却処理：在庫ありに戻すだけでなく、返却時点でメンテナンス中／紛失・確認中への変更も選べる。
+// 実返却日・返却確認者・備考は移動履歴に記録する。
+function saveReturnConfirm(id){
   const e=equipment.find(x=>x.id===id);
   if(!e) return;
+  const retDate=document.getElementById('rf-date-'+id).value||today();
+  const confirmedBy=document.getElementById('rf-by-'+id).value.trim();
+  const newStatus=document.getElementById('rf-status-'+id).value;
+  const memo=document.getElementById('rf-memo-'+id).value.trim();
   const oldLoc=e.location||'';
   historyLog.push({
     id:crypto.randomUUID(),eqId:id,
     dt:new Date().toISOString().slice(0,16),
-    op:'返却',from:oldLoc,to:e.defLoc,
+    op:'返却',from:oldLoc,to:newStatus==='在庫あり'?e.defLoc:oldLoc,
     fromP:e.holder||'',toP:'',
-    slip:e.slipId||'',memo:''
+    slip:e.slipId||'',memo,
+    retDate,confirmedBy
   });
-  e.status='在庫あり';
-  e.location=e.defLoc;
+  e.status=newStatus;
+  if(newStatus==='在庫あり'){ e.location=e.defLoc; }
   e.holder='';
   e.slipId='';
   saveToLocal();
+  saveEqToDb(e);
+  toggleReturnForm(id);
   openDetail(id);
 }
 
@@ -1371,6 +1387,17 @@ function openDetail(id){
   const hist=historyLog.filter(h=>h.eqId===id).sort((a,b)=>b.dt.localeCompare(a.dt));
   const maint=maintenanceLogs.filter(m=>m.eqId===id).sort((a,b)=>(b.start||'').localeCompare(a.start||''));
   const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635','状況更新':'#fbbf24'};
+  const histExtra=h=>{
+    if(h.op==='返却'){
+      const parts=['実返却日：'+fmtF(h.retDate||(h.dt||'').slice(0,10))];
+      if(h.confirmedBy) parts.push('確認者：'+h.confirmedBy);
+      if(h.memo) parts.push('備考：'+h.memo);
+      return '<div class="tdet" style="color:#94a3b8">'+parts.join('　')+'</div>';
+    }
+    if(h.slip){ const sl=slips.find(s=>s.id===h.slip); return '<div class="tdet" style="color:#818cf8">'+(sl?sl.event:h.slip)+'</div>'; }
+    if(h.memo){ return '<div class="tdet" style="color:#818cf8">'+h.memo+'</div>'; }
+    return '';
+  };
 
   // この機材が使われた全伝票を収集
   const linkedSlipIds=[...new Set(slipItems.filter(si=>si.eqId===id).map(si=>si.slipId))];
@@ -1386,7 +1413,7 @@ function openDetail(id){
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           ${ebdg(e.status)}
           ${e.status==='在庫あり'?`<button class="btn btn-p btn-sm" onclick="toggleLendForm('${e.id}')">📤 貸出</button>`:''}
-          ${(e.status==='貸出中'||e.status==='返却待ち')?`<button class="btn btn-s btn-sm" onclick="saveReturn('${e.id}')">📥 返却</button>`:''}
+          ${(e.status==='貸出中'||e.status==='返却待ち')?`<button class="btn btn-s btn-sm" onclick="toggleReturnForm('${e.id}')">📥 返却</button>`:''}
           ${(e.status==='メンテナンス中'||e.status==='紛失・確認中')?`<button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">🔧 状況を更新</button>`:''}
           <button class="btn btn-s btn-sm" onclick="toggleMaintForm('${e.id}')">🛠 メンテ登録</button>
           ${e.slipId?`<button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId}')">伝票を見る</button>`:''}
@@ -1409,6 +1436,25 @@ function openDetail(id){
       <div style="display:flex;gap:8px">
         <button class="btn btn-p btn-sm" onclick="saveLending('${e.id}')">保存する</button>
         <button class="btn btn-s btn-sm" onclick="toggleLendForm('${e.id}')">キャンセル</button>
+      </div>
+    </div>
+    <div id="return-form-${e.id}" class="card mb12" style="display:none;border-color:#34d399">
+      <h3 style="margin-bottom:12px">📥 返却を確認</h3>
+      <div class="g2">
+        <div class="fg"><label>実返却日</label><input type="date" id="rf-date-${e.id}" value="${today()}" style="color-scheme:dark"></div>
+        <div class="fg"><label>返却確認者</label><input id="rf-by-${e.id}" placeholder="担当者名"></div>
+      </div>
+      <div class="fg"><label>返却後のステータス</label>
+        <select id="rf-status-${e.id}">
+          <option value="在庫あり">在庫あり</option>
+          <option value="メンテナンス中">メンテナンス中</option>
+          <option value="紛失・確認中">紛失・確認中</option>
+        </select>
+      </div>
+      <div class="fg"><label>備考</label><textarea id="rf-memo-${e.id}" rows="2" placeholder="例：ケーブル1本欠品のため要確認"></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveReturnConfirm('${e.id}')">返却を確定する</button>
+        <button class="btn btn-s btn-sm" onclick="toggleReturnForm('${e.id}')">キャンセル</button>
       </div>
     </div>
     <div id="status-form-${e.id}" class="card mb12" style="display:none;border-color:#6366f1">
@@ -1495,8 +1541,7 @@ function openDetail(id){
         <div class="tdt">${fmtDT(h.dt)}</div>
         <div class="top" style="color:${opC[h.op]||'#94a3b8'}">${h.op}</div>
         <div class="tdet">${h.from}→${h.to}${h.fromP?` / ${h.fromP}→${h.toP||''}`:''}</div>
-        ${h.slip?`<div class="tdet" style="color:#818cf8">${slips.find(s=>s.id===h.slip)?.event||h.slip}</div>`:''}
-        ${h.memo&&!h.slip?`<div class="tdet" style="color:#818cf8">${h.memo}</div>`:''}
+        ${histExtra(h)}
       </div>`).join('')}</div>`:'<div class="empty">履歴なし</div>'}
     </div>
   `;
@@ -1782,6 +1827,11 @@ function openSlipForm(id=''){
 
 let sfItemCount=0;
 
+function recheckEqConflicts(rowId){
+  const row=document.getElementById(rowId);
+  const sel=row?.querySelector('.si-eq');
+  if(sel) checkEqConflicts(sel.value,rowId);
+}
 function checkEqConflicts(eqId,rowId){
   const row=document.getElementById(rowId);
   if(!row) return;
@@ -1792,6 +1842,10 @@ function checkEqConflicts(eqId,rowId){
   const eq=equipment.find(e=>e.id===eqId);
   if(!eq) return;
   const msgs=[];
+  // 数量チェック（在庫数を超える数量が指定された場合に警告）
+  const qtyEl=row.querySelector('.si-qty');
+  const reqQty=qtyEl?parseInt(qtyEl.value)||1:1;
+  if(reqQty>(eq.qty||1)) msgs.push(`⚠ 数量(${reqQty})が<strong>${eq.name}</strong>の在庫数(${eq.qty||1})を超えています`);
   // ステータスチェック
   if(eq.status==='メンテナンス中') msgs.push(`⚠ <strong>${eq.name}</strong> は現在メンテナンス中です`);
   else if(eq.status==='紛失・確認中') msgs.push(`⚠ <strong>${eq.name}</strong> は紛失・確認中です`);
@@ -1841,7 +1895,7 @@ function addSlipItem(type,data=null){
       ?`<select class="si-eq" onchange="checkEqConflicts(this.value,'${rowId}')" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none"><option value="">選択…</option>${eqOptions}</select>`
       :`<input class="si-name" placeholder="機材名を入力" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none" value="${data?data.name:''}">`
     }</div>
-    <input type="number" class="si-qty" value="${data?data.qty:1}" min="1" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
+    <input type="number" class="si-qty" value="${data?data.qty:1}" min="1" oninput="recheckEqConflicts('${rowId}')" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
     <input type="datetime-local" class="si-start" value="${data?data.start.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
     <input type="datetime-local" class="si-end" value="${data?data.end.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
     <input class="si-note" placeholder="備考" value="${data?data.notes:''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
