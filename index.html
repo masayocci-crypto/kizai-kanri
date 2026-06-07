@@ -249,6 +249,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
   </div>
   </div>
   <div id="s-cal" class="tp on">
+    <div id="cal-legend" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 10px;font-size:11px;color:#94a3b8"></div>
     <div id="cal-wrap"><div id="fc-cal"></div></div>
   </div>
   <div id="s-grid" class="tp">
@@ -365,7 +366,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
         <div class="fg"><label>在庫数</label><input id="ef-qty" type="number" value="1" min="1"></div>
       </div>
       <div class="g3">
-        <div class="fg"><label>種別 *</label><select id="ef-cat"></select></div>
+        <div class="fg"><label>種別 *</label><select id="ef-cat" onchange="efCatChanged()"></select></div>
         <div class="fg"><label>所有区分</label><select id="ef-own"></select></div>
         <div class="fg"><label>管理場所</label><select id="ef-loc"></select></div>
       </div>
@@ -387,7 +388,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
       <div class="g2">
         <div class="fg">
           <label>アイコンカラー</label>
-          <select id="ef-color">
+          <select id="ef-color" onchange="efColorTouched=true">
             <option value="#60a5fa">青</option><option value="#fbbf24">黄</option>
             <option value="#f87171">赤</option><option value="#34d399">緑</option>
             <option value="#a78bfa">紫</option><option value="#fb923c">橙</option>
@@ -751,6 +752,7 @@ let maintenanceLogs = [];
 const customIcons = {};
 const customIconsByKey = {};
 let pendingEfIcon = null;
+let efColorTouched = false; // ユーザーがアイコンカラーを手動変更したか（種別変更時の自動反映を上書きしないため）
 
 // ═══════════════════════════════════════════════
 //  ICONS (pixel art SVG)
@@ -1520,21 +1522,54 @@ function renderSchedule(){
   if(!document.getElementById('sg-month').value) document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
 }
 
+// カレンダーの色分けルール（改善指示書8章準拠）：
+// 準備中=青／出庫済み=紫／本番日=緑／返却待ち=黄／完了=グレー／問題あり=赤
+const CAL_CATEGORY_COLORS={'準備中':'#3b82f6','出庫済み':'#7c3aed','本番日':'#22c55e','返却待ち':'#eab308','完了':'#64748b','問題あり':'#ef4444'};
+// 伝票ステータス・使用日から、カレンダー上の表示カテゴリ（上記6種）を判定する
+function calEventCategory(s){
+  if(s.status==='未返却') return '問題あり';
+  if(s.status==='返却済み'||s.status==='キャンセル') return '完了';
+  if(s.status==='返却待ち') return '返却待ち';
+  const today=new Date().toISOString().slice(0,10);
+  if(s.start&&s.end&&today>=s.start.slice(0,10)&&today<=s.end.slice(0,10)) return '本番日';
+  if(s.status==='出庫済み'||s.status==='使用中') return '出庫済み';
+  return '準備中'; // 仮登録／準備中
+}
 const SLIP_COLORS={'仮登録':'#475569','準備中':'#3b82f6','出庫済み':'#7c3aed','使用中':'#4f46e5','返却待ち':'#d97706','返却済み':'#059669','未返却':'#dc2626','キャンセル':'#374151'};
+const calEventColor=s=>CAL_CATEGORY_COLORS[calEventCategory(s)]||'#6366f1';
+// 月表示でイベント名が長くなりすぎないよう短縮する
+const calShortTitle=t=>(t&&t.length>14)?t.slice(0,13)+'…':(t||'');
+
+function renderCalLegend(){
+  const el=document.getElementById('cal-legend');
+  if(!el) return;
+  el.innerHTML=Object.entries(CAL_CATEGORY_COLORS).map(([k,v])=>
+    `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:50%;background:${v};display:inline-block"></span>${k}</span>`
+  ).join('');
+}
 
 function initCalendar(){
+  renderCalLegend();
   if(calInstance) return;
   const el=document.getElementById('fc-cal');
   if(!el||typeof FullCalendar==='undefined') return;
   const events=slips.filter(s=>s.start).map(s=>({
     id:s.id,title:s.event,start:s.start,end:s.end||s.start,
-    color:SLIP_COLORS[s.status]||'#6366f1',
-    extendedProps:{slip:s}
+    color:calEventColor(s),
+    extendedProps:{slip:s,cat:calEventCategory(s)}
   }));
   calInstance=new FullCalendar.Calendar(el,{
     locale:'ja',initialView:'dayGridMonth',height:'auto',
     headerToolbar:{left:'prev,next today',center:'title',right:'dayGridMonth,timeGridWeek'},
     events,
+    eventContent:(arg)=>{
+      const isMonth=arg.view.type==='dayGridMonth';
+      const t=isMonth?calShortTitle(arg.event.title):arg.event.title;
+      return {html:`<div style="display:flex;align-items:center;gap:4px;overflow:hidden;padding:1px 2px">
+        <span style="flex:none;width:7px;height:7px;border-radius:50%;background:${arg.event.backgroundColor}"></span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${t}</span>
+      </div>`};
+    },
     eventClick:({event})=>{ openSlipDetail(event.id); },
   });
   calInstance.render();
@@ -1558,7 +1593,8 @@ function renderSchedGrid(){
     const cells=nums.map(d=>{
       const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const hit=eSlips.find(s=>s.start&&s.end&&ds>=s.start.slice(0,10)&&ds<=s.end.slice(0,10));
-      return `<td style="padding:1px;${hit?'background:'+SLIP_COLORS[hit.status]+'33':''}">${hit?`<div style="width:18px;height:12px;background:${SLIP_COLORS[hit.status]};border-radius:2px;margin:auto;cursor:pointer" title="${hit.event}" onclick="openSlipDetail('${hit.id}')"></div>`:''}</td>`;
+      const hc=hit?calEventColor(hit):'';
+      return `<td style="padding:1px;${hit?'background:'+hc+'33':''}">${hit?`<div style="width:18px;height:12px;background:${hc};border-radius:2px;margin:auto;cursor:pointer" title="${hit.event}" onclick="openSlipDetail('${hit.id}')"></div>`:''}</td>`;
     }).join('');
     return `<tr><td style="padding:5px 8px;white-space:nowrap;position:sticky;left:0;background:#13151f;border-bottom:1px solid #1a1d27">
       <div style="display:flex;align-items:center;gap:6px">
@@ -1997,6 +2033,7 @@ function openEqForm(id=''){
   efIconKey.innerHTML=`<option value="">種別に従う</option>`+mIcons.map(i=>`<option value="${i.key}">${i.label}</option>`).join('');
 
   pendingEfIcon=null;
+  efColorTouched=!!id; // 編集時は既存の色を尊重し、自動上書きしない。新規登録時のみ種別連動を有効にする
   document.getElementById('ef-icon-ph').style.display='block';
   document.getElementById('ef-icon-preview').style.display='none';
 
@@ -2020,10 +2057,23 @@ function openEqForm(id=''){
     document.getElementById('ef-icon-ph').style.display='none';
     document.getElementById('ef-icon-preview').style.display='flex';
   }
+  if(!id) efCatChanged(); // 新規登録時は初期表示の種別に応じてアイコン・カラーの既定値を反映
   document.getElementById('eq-form-panel').scrollIntoView({behavior:'smooth'});
 }
 
 function closeEqForm(){ document.getElementById('eq-form-panel').style.display='none'; editingEqId=null; }
+
+// 種別を選ぶと、その種別の既定アイコン・カラーを反映する（改善指示書10章：個別の手動変更は尊重し上書きしない）
+function efCatChanged(){
+  const cat=mCat.find(c=>c.name===document.getElementById('ef-cat').value);
+  if(!cat) return;
+  const efIconKey=document.getElementById('ef-icon-key');
+  if(!efIconKey.value) efIconKey.value=''; // 「種別に従う」のままならアイコンは自動的に種別アイコンへ追従
+  if(!efColorTouched && cat.color){
+    const efColor=document.getElementById('ef-color');
+    if([...efColor.options].some(o=>o.value===cat.color)) efColor.value=cat.color;
+  }
+}
 
 function saveEq(){
   const name=document.getElementById('ef-name').value.trim();
