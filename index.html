@@ -2138,7 +2138,6 @@ function renderIconSettings(){
             </label>
             ${hasCustom?`<button class="btn btn-d btn-xs" onclick="clearIconByKey('${ic.key}')" title="カスタム画像を削除">✕</button>`:''}
           </div>
-          ${hasCustom?`<div style="font-size:10px;color:#6366f1;margin-top:4px">カスタム画像設定済み</div>`:''}
         </div>`;
       }).join('')}
     </div>
@@ -2158,13 +2157,14 @@ function renderIconSettings(){
 function uploadIconByKey(key, event){
   const file = event.target.files[0]; if(!file) return;
   const reader = new FileReader();
-  reader.onload = e => { customIconsByKey[key] = e.target.result; renderIconSettings(); };
+  reader.onload = e => { customIconsByKey[key] = e.target.result; renderIconSettings(); saveToLocal(); };
   reader.readAsDataURL(file);
 }
 
 function clearIconByKey(key){
   delete customIconsByKey[key];
   renderIconSettings();
+  saveToLocal();
 }
 
 function addIconKey(){
