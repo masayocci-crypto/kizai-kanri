@@ -326,8 +326,9 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <button class="btn btn-p btn-sm" onclick="openEqForm()">＋ 機材登録</button>
     <button class="btn btn-s btn-sm" onclick="exportEquipmentCSV()" title="機材リストをCSVで書き出し">⬇ CSV</button>
     <label class="btn btn-s btn-sm" style="cursor:pointer" title="CSVから機材をインポート">⬆ インポート<input type="file" accept=".csv,text/csv" style="display:none" onchange="importEquipmentCSV(event)"></label>
+    <button class="btn btn-sm btn-s" id="er-view-btn" onclick="toggleErView()">📋 リスト</button>
   </div>
-  <div id="er-tbl-wrap" class="tbl-wrap mb16"></div>
+  <div id="er-tbl-wrap" class="mb16"></div>
   <div id="eq-form-panel" style="display:none">
     <div class="sep"></div>
     <h3 id="eq-form-title" class="mb12">機材登録</h3>
@@ -1028,6 +1029,7 @@ function filterEqStatus(s){
 //  EQUIPMENT STATUS
 // ═══════════════════════════════════════════════
 let eqView = 'card'; // 'card' | 'list'
+let erView = 'card'; // 'card' | 'list'
 let eqSortCol = '';
 let eqSortDir = 1;
 let erSortCol = '';
@@ -1043,6 +1045,12 @@ function toggleEqView(){
   eqView = eqView==='card'?'list':'card';
   document.getElementById('qs-view-btn').textContent = eqView==='card'?'📋 リスト':'🃏 カード';
   renderEqStatus();
+}
+
+function toggleErView(){
+  erView = erView==='card'?'list':'card';
+  document.getElementById('er-view-btn').textContent = erView==='card'?'📋 リスト':'🃏 カード';
+  renderEqReg();
 }
 
 function renderEqStatus(){
@@ -1807,25 +1815,39 @@ function renderEqReg(){
     if(va>vb) return erSortDir;
     return 0;
   });
-  const erSh=(col,label,w)=>{
-    const a=erSortCol===col; const arr=a?(erSortDir===1?' ↑':' ↓'):'';
-    return `<th${w?' width="'+w+'"':''} style="cursor:pointer;user-select:none;white-space:nowrap;${a?'color:#818cf8':''}" onclick="sortErBy('${col}')">${label}${arr}</th>`;
-  };
-  document.getElementById('er-tbl-wrap').innerHTML=`<table class="tbl"><thead><tr>
-    <th width="44"></th>
-    ${erSh('name','機材名')}${erSh('model','型番')}${erSh('serial','管理番号')}
-    ${erSh('cat','種別')}${erSh('own','所有区分')}${erSh('defLoc','管理場所')}${erSh('qty','在庫数',60)}<th></th>
-  </tr></thead><tbody>${list.map(e=>`<tr>
-    <td>${getIcon(e.cat,e.color,30,e.id)}</td>
-    <td style="font-weight:600">${e.name}${e.fav?'<span style="color:#fbbf24;margin-left:4px">★</span>':''}</td>
-    <td style="color:#94a3b8">${e.model}</td>
-    <td style="color:#64748b;font-size:12px">${e.serial}</td>
-    <td style="font-size:12px">${e.cat}</td>
-    <td><span class="bdg ${IBADGE[e.own==='自社機材'?'own':e.own==='他社機材'?'external':'rental']||'b-draft'}">${e.own}</span></td>
-    <td style="font-size:12px;color:#94a3b8">${e.defLoc}</td>
-    <td style="font-size:12px">${e.qty}</td>
-    <td><button class="btn btn-s btn-xs" onclick="openEqForm('${e.id}')">編集</button></td>
-  </tr>`).join('')}</tbody></table>`;
+  const wrap=document.getElementById('er-tbl-wrap');
+  if(!list.length){ wrap.innerHTML='<div class="empty">該当機材なし</div>'; return; }
+
+  if(erView==='card'){
+    wrap.innerHTML=`<div class="eq-cards">${list.map(e=>{
+      return `<div class="eq-card" onclick="openEqForm('${e.id}')">
+        <div class="ec-icon" style="background:${e.color}22">${getIcon(e.cat,e.color,44,e.id)}</div>
+        <div class="ec-name">${e.name}${e.fav?'<span style="color:#fbbf24;margin-left:4px">★</span>':''}</div>
+        <div class="ec-sub">${e.model}</div>
+        <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:4px"><span class="bdg ${IBADGE[e.own==='自社機材'?'own':e.own==='他社機材'?'external':'rental']||'b-draft'}">${e.own}</span></div>
+        <div class="ec-loc">${e.defLoc||'—'}</div>
+      </div>`;
+    }).join('')}</div>`;
+  } else {
+    const erSh=(col,label,w)=>{
+      const a=erSortCol===col; const arr=a?(erSortDir===1?' ↑':' ↓'):'';
+      return `<th${w?' width="'+w+'"':''} style="cursor:pointer;user-select:none;white-space:nowrap;${a?'color:#818cf8':''}" onclick="sortErBy('${col}')">${label}${arr}</th>`;
+    };
+    wrap.innerHTML=`<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th width="44"></th>
+      ${erSh('name','機材名')}${erSh('model','型番')}${erSh('serial','管理番号')}
+      ${erSh('cat','種別')}${erSh('own','所有区分')}${erSh('defLoc','管理場所')}${erSh('qty','在庫数',60)}
+    </tr></thead><tbody>${list.map(e=>`<tr onclick="openEqForm('${e.id}')">
+      <td>${getIcon(e.cat,e.color,30,e.id)}</td>
+      <td style="font-weight:600">${e.name}${e.fav?'<span style="color:#fbbf24;margin-left:4px">★</span>':''}</td>
+      <td style="color:#94a3b8">${e.model}</td>
+      <td style="color:#64748b;font-size:12px">${e.serial}</td>
+      <td style="font-size:12px">${e.cat}</td>
+      <td><span class="bdg ${IBADGE[e.own==='自社機材'?'own':e.own==='他社機材'?'external':'rental']||'b-draft'}">${e.own}</span></td>
+      <td style="font-size:12px;color:#94a3b8">${e.defLoc}</td>
+      <td style="font-size:12px">${e.qty}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+  }
 }
 
 function openEqForm(id=''){
