@@ -440,7 +440,10 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 <div id="v-settings" class="view">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <h2 style="margin:0">設定</h2>
-    <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-d btn-sm" onclick="clearAllEquipment()" title="登録されている機材を全て削除">🗑 機材リストを全削除</button>
+      <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
+    </div>
   </div>
   <div class="tabs">
     <div class="tab on" onclick="settTab(this,'st-icon')">アイコンキー</div>
@@ -553,6 +556,9 @@ async function saveEqToDb(e){
 }
 async function deleteEqFromDb(id){
   await sb.from('equipment_master').delete().eq('id',id);
+}
+async function deleteAllEqFromDb(ids){
+  if(ids.length) await sb.from('equipment_master').delete().in('id', ids);
 }
 async function saveSlipToDb(s, items, removedItemIds=[]){
   await sb.from('checkout_slips').upsert(slipToDb(s));
@@ -838,8 +844,9 @@ function getAlertItems(){
       const eq=equipment.find(e=>e.id===si.eqId);
       if(eq&&(eq.status==='貸出中'||eq.status==='返却待ち')){
         const sl2=slips.find(s=>s.id===si.slipId);
-        if(!issues.find(x=>x.eq.id===eq.id&&x.type==='tomorrow'))
-          issues.push({type:'tomorrow',eq,sl:sl2,msg:`明日「${sl2?sl2.event:''}」で使用予定ですが現在「${eq.status}」`});
+        // 紐づく伝票が見つからない（データ不整合で参照切れ）場合は「」のような空表示を避けるため除外
+        if(sl2&&!issues.find(x=>x.eq.id===eq.id&&x.type==='tomorrow'))
+          issues.push({type:'tomorrow',eq,sl:sl2,msg:`明日「${sl2.event}」で使用予定ですが現在「${eq.status}」`});
       }
     }
   });
@@ -921,7 +928,8 @@ function renderDashboard(){
   `;
 
   // Today events
-  const near = slips.filter(s=>s.start&&s.start.slice(0,10)>=t&&s.status!=='キャンセル').slice(0,4);
+  const near = slips.filter(s=>s.start&&s.start.slice(0,10)>=t&&s.status!=='キャンセル')
+    .sort((a,b)=>a.start.localeCompare(b.start)).slice(0,4);
   document.getElementById('db-today-events').innerHTML=`
     <div class="card">
       <h3>📅 本日使用予定（${todaySlips.length}件）</h3>
@@ -1217,6 +1225,35 @@ function saveReturn(id){
   openDetail(id);
 }
 
+function toggleStatusForm(id){
+  const f=document.getElementById('status-form-'+id);
+  if(!f) return;
+  f.style.display=f.style.display==='none'?'':'none';
+}
+
+function saveStatusUpdate(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  const newStatus=document.getElementById('sf-up-status-'+id).value;
+  const newLoc=document.getElementById('sf-up-loc-'+id).value.trim();
+  const memo=document.getElementById('sf-up-memo-'+id).value.trim();
+  const oldStatus=e.status;
+  const oldLoc=e.location||'';
+  if(newStatus===oldStatus && newLoc===oldLoc && !memo){ toggleStatusForm(id); return; }
+  historyLog.push({
+    id:crypto.randomUUID(),eqId:id,
+    dt:new Date().toISOString().slice(0,16),
+    op:'状況更新',from:oldStatus,to:newStatus,
+    fromP:oldLoc,toP:newLoc||oldLoc,
+    slip:'',memo:memo
+  });
+  e.status=newStatus;
+  if(newLoc) e.location=newLoc;
+  saveToLocal();
+  saveEqToDb(e);
+  openDetail(id);
+}
+
 function openDetail(id){
   const e=equipment.find(x=>x.id===id);
   if(!e) return;
@@ -1225,7 +1262,7 @@ function openDetail(id){
   prevView = savedPrev;
   const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
   const hist=historyLog.filter(h=>h.eqId===id).sort((a,b)=>b.dt.localeCompare(a.dt));
-  const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635'};
+  const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635','状況更新':'#fbbf24'};
 
   // この機材が使われた全伝票を収集
   const linkedSlipIds=[...new Set(slipItems.filter(si=>si.eqId===id).map(si=>si.slipId))];
@@ -1242,6 +1279,7 @@ function openDetail(id){
           ${ebdg(e.status)}
           ${e.status==='在庫あり'?`<button class="btn btn-p btn-sm" onclick="toggleLendForm('${e.id}')">📤 貸出</button>`:''}
           ${(e.status==='貸出中'||e.status==='返却待ち')?`<button class="btn btn-s btn-sm" onclick="saveReturn('${e.id}')">📥 返却</button>`:''}
+          ${(e.status==='メンテナンス中'||e.status==='紛失・確認中')?`<button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">🔧 状況を更新</button>`:''}
           ${e.slipId?`<button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId}')">伝票を見る</button>`:''}
         </div>
       </div>
@@ -1262,6 +1300,20 @@ function openDetail(id){
       <div style="display:flex;gap:8px">
         <button class="btn btn-p btn-sm" onclick="saveLending('${e.id}')">保存する</button>
         <button class="btn btn-s btn-sm" onclick="toggleLendForm('${e.id}')">キャンセル</button>
+      </div>
+    </div>
+    <div id="status-form-${e.id}" class="card mb12" style="display:none;border-color:#6366f1">
+      <h3 style="margin-bottom:12px">🔧 状況を更新</h3>
+      <div class="g2">
+        <div class="fg"><label>新しいステータス</label>
+          <select id="sf-up-status-${e.id}">${mStatus.map(st=>`<option value="${st.name}"${st.name===e.status?' selected':''}>${st.name}</option>`).join('')}</select>
+        </div>
+        <div class="fg"><label>現在地</label><input id="sf-up-loc-${e.id}" value="${e.location||''}" placeholder="場所を入力"></div>
+      </div>
+      <div class="fg"><label>メモ（更新内容・経緯など）</label><textarea id="sf-up-memo-${e.id}" rows="2" placeholder="例：送信部の修理が完了し受領"></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveStatusUpdate('${e.id}')">保存する</button>
+        <button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">キャンセル</button>
       </div>
     </div>
     <div class="card mb12">
@@ -1286,7 +1338,7 @@ function openDetail(id){
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
               ${sbdg(s.status)}
-              ${isCurrent?'<span style="font-size:10px;background:#2a1f3d;color:#a78bfa;padding:1px 5px;border-radius:3px">使用中</span>':''}
+              ${isCurrent?'<span style="font-size:10px;background:#2a1f3d;color:#a78bfa;padding:1px 5px;border-radius:3px" title="この機材の現在の使用伝票として連動しています">📌 現在の伝票</span>':''}
               <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.event}</span>
             </div>
             <div style="font-size:11px;color:#64748b">${s.loc} / ${s.person}</div>
@@ -1529,12 +1581,20 @@ function openSlipForm(id=''){
   sfItemCount=0;
 
   const s=id?slips.find(x=>x.id===id):null;
+  // datetime-local 入力は "YYYY-MM-DDTHH:mm" 形式以外を受け付けず、
+  // 日付のみ（例: Supabase の date型から来た "2026-06-05"）を渡すと値が空にリセットされてしまう。
+  // それを編集→保存すると開始日・終了日が空文字になり、ダッシュボードの一覧から消えてしまうため、時刻を補完する。
+  const toDtLocal=v=>{
+    if(!v) return '';
+    const str=String(v);
+    return /^\d{4}-\d{2}-\d{2}$/.test(str) ? str+'T00:00' : str.slice(0,16);
+  };
   document.getElementById('sf-event').value=s?s.event:'';
   document.getElementById('sf-client').value=s?s.client:'';
   document.getElementById('sf-loc').value=s?s.loc:'';
   document.getElementById('sf-person').value=s?s.person:'';
-  document.getElementById('sf-start').value=s&&s.start?s.start.slice(0,16):'';
-  document.getElementById('sf-end').value=s&&s.end?s.end.slice(0,16):'';
+  document.getElementById('sf-start').value=s?toDtLocal(s.start):'';
+  document.getElementById('sf-end').value=s?toDtLocal(s.end):'';
   document.getElementById('sf-checkout').value=s?s.checkout:'';
   document.getElementById('sf-ret-plan').value=s?s.retPlan:'';
   document.getElementById('sf-ret-actual').value=s?s.retActual:'';
@@ -1620,6 +1680,39 @@ function addSlipItem(type,data=null){
   }
 }
 
+// 機材に紐づく伝票の中から「現在最も該当する伝票」を日程基準で判定する
+// （返却済み・キャンセルは除外し、①使用期間が今日を含むもの→②直近の予定→③直近の過去、の優先順で選ぶ）
+// 「使用中イベント」「貸出中／返却待ち」は、あくまで“今まさに出庫されている伝票”だけに連動させる。
+// 仮登録・準備中・将来予定の伝票は、機材の現在ステータスや現在地を上書きしない（日程と表記の食い違いを防ぐ）。
+function syncEqWithCurrentSlip(eqId){
+  const eq=equipment.find(e=>e.id===eqId);
+  if(!eq) return;
+  // メンテナンス中・紛失確認中は伝票連動の対象外（手動の状況更新で管理）
+  if(eq.status==='メンテナンス中'||eq.status==='紛失・確認中') return;
+  const t=today();
+  const dateOf=s=>({start:s.start?s.start.slice(0,10):'',end:s.end?s.end.slice(0,10):''});
+  const linked=[...new Set(slipItems.filter(si=>si.eqId===eqId).map(si=>si.slipId))]
+    .map(sid=>slips.find(s=>s.id===sid)).filter(Boolean);
+  // 「現在まさに持ち出し中」とみなせる伝票 = 使用期間が今日を含み、かつ伝票ステータスが実出庫系（出庫済み/使用中/返却待ち）
+  const active=linked.filter(s=>{
+    const d=dateOf(s);
+    return !['返却済み','キャンセル'].includes(s.status)&&d.start&&d.start<=t&&(!d.end||d.end>=t)
+      &&['出庫済み','使用中','返却待ち'].includes(s.status);
+  }).sort((a,b)=>dateOf(b).start.localeCompare(dateOf(a).start));
+
+  if(active.length){
+    const cur=active[0];
+    eq.slipId=cur.id;
+    if(['出庫済み','使用中'].includes(cur.status)){ eq.status='貸出中'; eq.location=cur.loc; eq.holder=cur.person; }
+    else { eq.status='返却待ち'; eq.location=cur.loc; eq.holder=cur.person; }
+  } else {
+    // 今まさに出庫中の伝票が無い → 伝票リンクを外し、貸出中／返却待ちのままなら在庫に戻す
+    // （仮登録・準備中・将来予定は「近日のイベント」等で別途確認できるため、ここでは紐付けない）
+    eq.slipId='';
+    if(eq.status==='貸出中'||eq.status==='返却待ち'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; }
+  }
+}
+
 function saveSlip(){
   const name=document.getElementById('sf-event').value.trim();
   if(!name){ alert('イベント名は必須です'); return; }
@@ -1637,12 +1730,14 @@ function saveSlip(){
   if(editingSlipId){ const i=slips.findIndex(s=>s.id===editingSlipId); if(i>=0) slips[i]=slip; }
   else slips.push(slip);
 
-  // Remove old items
-  const removeIds=slipItems.filter(i=>i.slipId===id).map(i=>i.id);
+  // Remove old items（紐づいていた機材IDも記録して、変更後の状態を再計算する）
+  const oldItems=slipItems.filter(i=>i.slipId===id);
+  const removeIds=oldItems.map(i=>i.id);
+  const affectedEqIds=new Set(oldItems.filter(i=>i.eqId).map(i=>i.eqId));
   removeIds.forEach(rid=>{ const idx=slipItems.findIndex(i=>i.id===rid); if(idx>=0) slipItems.splice(idx,1); });
   const newItems=[];
 
-  // Save new items & update equipment
+  // Save new items
   document.querySelectorAll('#sf-items .si-row').forEach(row=>{
     const type=row.dataset.type;
     const isOwn=type==='own';
@@ -1657,17 +1752,11 @@ function saveSlip(){
     const item={id:crypto.randomUUID(),slipId:id,type,eqId:eqId||null,name:iname,qty,start,end,notes};
     slipItems.push(item);
     newItems.push(item);
-    // Update equipment status
-    if(eqId){
-      const eq=equipment.find(e=>e.id===eqId);
-      if(eq){
-        eq.slipId=id;
-        if(['出庫済み','使用中'].includes(slip.status)){ eq.status='貸出中'; eq.location=slip.loc; eq.holder=slip.person; }
-        else if(slip.status==='返却待ち'){ eq.status='返却待ち'; }
-        else if(slip.status==='返却済み'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; eq.slipId=''; }
-      }
-    }
+    if(eqId) affectedEqIds.add(eqId);
   });
+  // 機材ごとに「現在もっとも該当する伝票」を日程基準で再計算し、状態を同期する
+  // （保存した伝票が将来予定／仮の伝票でも、それだけで現在の使用伝票が上書きされないようにする）
+  affectedEqIds.forEach(eqId=>syncEqWithCurrentSlip(eqId));
   // Refresh calendar
   if(calInstance){ calInstance.destroy(); calInstance=null; }
   saveToLocal();
@@ -1680,7 +1769,10 @@ function deleteSlip(){
   if(!editingSlipId||!confirm('この伝票を削除しますか？')) return;
   const i=slips.findIndex(s=>s.id===editingSlipId);
   if(i>=0) slips.splice(i,1);
-  slipItems.filter(i=>i.slipId===editingSlipId).forEach(item=>{ const idx=slipItems.indexOf(item); if(idx>=0) slipItems.splice(idx,1); });
+  const removed=slipItems.filter(i=>i.slipId===editingSlipId);
+  const affectedEqIds=[...new Set(removed.filter(it=>it.eqId).map(it=>it.eqId))];
+  removed.forEach(item=>{ const idx=slipItems.indexOf(item); if(idx>=0) slipItems.splice(idx,1); });
+  affectedEqIds.forEach(eqId=>syncEqWithCurrentSlip(eqId));
   if(calInstance){ calInstance.destroy(); calInstance=null; }
   saveToLocal();
   deleteSlipFromDb(editingSlipId);
@@ -1821,6 +1913,17 @@ function deleteEq(){
   closeEqForm(); renderEqReg();
 }
 
+async function clearAllEquipment(){
+  if(!equipment.length){ alert('削除する機材データがありません'); return; }
+  if(!confirm('登録されている機材を全て削除します（全'+equipment.length+'件）。\nこの操作は取り消せません。よろしいですか？')) return;
+  const ids = equipment.map(e=>e.id);
+  equipment.length = 0;
+  saveToLocal();
+  renderEqReg();
+  try{ await deleteAllEqFromDb(ids); }catch(err){ console.error('全削除エラー', err); }
+  alert('機材リストを全て削除しました');
+}
+
 function handleEfIcon(event){
   const file=event.target.files[0]; if(!file) return;
   const reader=new FileReader();
@@ -1870,9 +1973,9 @@ function renderIconKeyList(){
         return `<div style="background:#1a1d27;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:10px;padding:14px;text-align:center;position:relative">
           ${idx>=10?`<button onclick="deleteIconKey(${idx})" style="position:absolute;top:6px;right:6px;background:none;border:none;color:#475569;cursor:pointer;font-size:12px" title="削除">✕</button>`:''}
           <div style="width:56px;height:56px;margin:0 auto 10px">${getIcon(ic.key,'#818cf8',56)}</div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${ic.label}</div>
-          <div style="font-size:11px;color:#64748b;margin-bottom:8px;min-height:16px">${ic.desc||''}</div>
-          <code style="font-size:10px;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:2px 8px;color:#94a3b8">${ic.key}</code>
+          <input value="${ic.label}" onblur="updateIconKey(${idx},'label',this.value)" placeholder="表示名" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#e2e8f0;font-size:14px;font-weight:700;margin-bottom:2px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#0f1117'">
+          <input value="${ic.desc||''}" onblur="updateIconKey(${idx},'desc',this.value)" placeholder="説明" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#64748b;font-size:11px;margin-bottom:8px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#0f1117'">
+          <input value="${ic.key}" onblur="updateIconKey(${idx},'key',this.value)" placeholder="キー名" style="width:100%;text-align:center;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:2px 8px;color:#94a3b8;font-size:10px;font-family:monospace;outline:none" onfocus="this.style.borderColor='#6366f1'">
           <div style="display:flex;gap:6px;justify-content:center;margin-top:10px">
             <label class="btn btn-s btn-xs" style="cursor:pointer" title="カスタム画像をアップロード">
               📷 画像変更
@@ -1894,6 +1997,35 @@ function deleteIconKey(idx){
   if(key) delete customIconsByKey[key];
   renderIconKeyList();
   saveToLocal();
+}
+
+function updateIconKey(idx,field,val){
+  const ic=mIcons[idx]; if(!ic) return;
+  const v=(val==null?'':String(val)).trim();
+  if(field==='key'){
+    if(!v){ alert('キー名を入力してください'); renderIconKeyList(); renderIconSettings(); return; }
+    if(v===ic.key) return;
+    if(mIcons.some((m,i)=>i!==idx&&m.key===v)){ alert('同じキーが既に存在します'); renderIconKeyList(); renderIconSettings(); return; }
+    const oldKey=ic.key;
+    ic.key=v;
+    // カスタム画像の紐付けを移動
+    if(Object.prototype.hasOwnProperty.call(customIconsByKey,oldKey)){
+      customIconsByKey[v]=customIconsByKey[oldKey];
+      delete customIconsByKey[oldKey];
+    }
+    // このキーを参照している機材・種別マスターを追従させる
+    equipment.forEach(e=>{ if(e.iconKey===oldKey) e.iconKey=v; });
+    mCat.forEach(c=>{ if(c.icon===oldKey) c.icon=v; });
+  } else if(field==='label'){
+    ic.label=v||ic.key;
+  } else if(field==='desc'){
+    ic.desc=v;
+  } else {
+    return;
+  }
+  saveToLocal();
+  renderIconKeyList();
+  renderIconSettings();
 }
 
 let pendingNicIcon=null;
@@ -1992,13 +2124,13 @@ function renderIconSettings(){
   el.innerHTML = `
     <p style="font-size:12px;color:#64748b;margin-bottom:12px">アイコンキーは機材・種別に割り当てるアイコンの識別名です。カスタム画像をアップロードするとそのキーを持つ全機材のアイコンが変わります。</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px">
-      ${mIcons.map((ic)=>{
+      ${mIcons.map((ic,idx)=>{
         const hasCustom = !!customIconsByKey[ic.key];
         return `<div style="background:#0f1117;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:8px;padding:12px;text-align:center">
           <div style="width:44px;height:44px;margin:0 auto">${getIcon(ic.key,'#818cf8',44)}</div>
-          <div style="font-size:13px;font-weight:600;margin-top:8px;margin-bottom:2px">${ic.label}</div>
-          <div style="font-size:11px;color:#64748b;margin-bottom:6px">${ic.desc||'—'}</div>
-          <div style="font-size:10px;background:#252840;border-radius:3px;padding:2px 6px;display:inline-block;color:#94a3b8;font-family:monospace;margin-bottom:8px">${ic.key}</div>
+          <input value="${ic.label}" onblur="updateIconKey(${idx},'label',this.value)" placeholder="表示名" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#e2e8f0;font-size:13px;font-weight:600;margin-top:8px;margin-bottom:2px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#1a1d27'">
+          <input value="${ic.desc||''}" onblur="updateIconKey(${idx},'desc',this.value)" placeholder="説明" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#64748b;font-size:11px;margin-bottom:6px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#1a1d27'">
+          <input value="${ic.key}" onblur="updateIconKey(${idx},'key',this.value)" placeholder="キー名" style="width:100%;text-align:center;background:#252840;border:1px solid #252840;border-radius:3px;padding:2px 6px;color:#94a3b8;font-size:10px;font-family:monospace;margin-bottom:8px;outline:none" onfocus="this.style.borderColor='#6366f1'">
           <div style="display:flex;gap:4px;justify-content:center">
             <label class="btn btn-s btn-xs" style="cursor:pointer" title="画像をアップロード">
               📷 画像
@@ -2128,9 +2260,21 @@ function downloadCSV(filename, headers, rows){
   URL.revokeObjectURL(url);
 }
 
+function colorNameFromCode(code){
+  const m=mColors.find(c=>c.code===code);
+  return m?m.name:(code||'');
+}
+function colorCodeFromInput(val){
+  if(!val) return '#60a5fa';
+  const v=String(val).trim();
+  if(/^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+  const m=mColors.find(c=>c.name===v);
+  return m?m.code:'#60a5fa';
+}
+
 function exportEquipmentCSV(){
-  const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','備考'];
-  const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',e.notes||'']);
+  const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','色','備考'];
+  const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',colorNameFromCode(e.color),e.notes||'']);
   downloadCSV('equipment.csv',headers,rows);
 }
 
@@ -2154,11 +2298,13 @@ function parseCSVLine(line){
 function importEquipmentCSV(event){
   const file=event.target.files[0]; if(!file) return;
   event.target.value=''; // reset input
+  // 重複IDの扱いをインポート開始時に1回だけ確認し、ファイル全体に適用する
+  const overwrite = confirm('CSV内に既存の機材と同じIDがある場合、データを上書きしますか？\n\n「OK」：上書きする（既存データを更新）\n「キャンセル」：上書きしない（新規分のみ追加し、既存はそのまま）');
   const reader=new FileReader();
   reader.onload=e=>{
     const lines=e.target.result.replace(/\r/g,'').split('\n').filter(l=>l.trim());
     if(lines.length<2){alert('データがありません');return;}
-    let added=0,updated=0;
+    let added=0,updated=0,skipped=0;
     lines.slice(1).forEach(line=>{
       const c=parseCSVLine(line);
       if(c.length<2||!c[1]) return;
@@ -2168,14 +2314,19 @@ function importEquipmentCSV(event){
         cat:c[5]||mCat[0]?.name||'',own:c[6]||mOwn[0]?.name||'',
         base:c[7]||'',defLoc:c[8]||mLoc[0]?.name||'',
         qty:parseInt(c[9])||1,status:c[10]||'在庫あり',
-        location:c[11]||c[8]||'',holder:c[12]||'',notes:c[13]||'',
-        color:'#60a5fa',sort:equipment.length+1,fav:false,iconKey:'',slipId:'',
+        location:c[11]||c[8]||'',holder:c[12]||'',
+        color:colorCodeFromInput(c[13]),notes:c[14]||'',
+        sort:equipment.length+1,fav:false,iconKey:'',slipId:'',
       };
       const idx=equipment.findIndex(e=>e.id===id);
-      if(idx>=0){Object.assign(equipment[idx],data);updated++;}
+      if(idx>=0){
+        if(overwrite){ Object.assign(equipment[idx],data); updated++; }
+        else skipped++;
+      }
       else{equipment.push(data);added++;}
     });
-    alert('インポート完了：新規'+added+'件、更新'+updated+'件');
+    const msg='インポート完了：新規'+added+'件、更新'+updated+'件'+(skipped?'、スキップ'+skipped+'件（既存IDのため上書きしませんでした）':'');
+    alert(msg);
     renderEqReg();
   };
   reader.readAsText(file,'UTF-8');
