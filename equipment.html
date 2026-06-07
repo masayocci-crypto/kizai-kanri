@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>機材管理システム</title>
 <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css' rel='stylesheet'/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Hiragino Sans','Yu Gothic UI',sans-serif;background:#0f1117;color:#e2e8f0;display:flex;height:100vh;overflow:hidden}
@@ -215,7 +216,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <input id="qs-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderEqStatus()">
     <select id="qs-st" onchange="renderEqStatus()"><option value="">全ステータス</option></select>
     <select id="qs-cat" onchange="renderEqStatus()"><option value="">全種別</option></select>
-    <select id="qs-own" onchange="renderEqStatus()"><option value="">全所有区分</option></select>
+    <select id="qs-loc" onchange="renderEqStatus()"><option value="">全管理場所</option></select>
     <select id="qs-base" onchange="renderEqStatus()">
       <option value="">全拠点</option>
       <option value="Tokyo">Tokyo</option>
@@ -254,10 +255,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
       <button class="btn btn-p btn-sm" onclick="openSlipForm()">＋ 新規伝票</button>
       <button class="btn btn-s btn-sm" onclick="exportSlipsCSV()" title="伝票リストをCSVで書き出し">⬇ CSV</button>
     </div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr>
-      <th>ステータス</th><th>イベント名</th><th>場所</th><th>担当者</th>
-      <th>使用日</th><th>出庫日</th><th>返却予定</th><th>機材数</th>
-    </tr></thead><tbody id="slip-list-body"></tbody></table></div>
+    <div id="slip-tbl-wrap" class="tbl-wrap"></div>
   </div>
   <div id="slip-form-panel" style="display:none">
     <div class="tb mb8">
@@ -329,10 +327,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <button class="btn btn-s btn-sm" onclick="exportEquipmentCSV()" title="機材リストをCSVで書き出し">⬇ CSV</button>
     <label class="btn btn-s btn-sm" style="cursor:pointer" title="CSVから機材をインポート">⬆ インポート<input type="file" accept=".csv,text/csv" style="display:none" onchange="importEquipmentCSV(event)"></label>
   </div>
-  <div class="tbl-wrap mb16"><table class="tbl"><thead><tr>
-    <th width="44"></th><th>機材名</th><th>型番</th><th>管理番号</th>
-    <th>種別</th><th>所有区分</th><th>管理場所</th><th>在庫数</th><th></th>
-  </tr></thead><tbody id="er-body"></tbody></table></div>
+  <div id="er-tbl-wrap" class="tbl-wrap mb16"></div>
   <div id="eq-form-panel" style="display:none">
     <div class="sep"></div>
     <h3 id="eq-form-title" class="mb12">機材登録</h3>
@@ -445,7 +440,10 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 <div id="v-settings" class="view">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <h2 style="margin:0">設定</h2>
-    <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-d btn-sm" onclick="clearAllEquipment()" title="登録されている機材を全て削除">🗑 機材リストを全削除</button>
+      <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
+    </div>
   </div>
   <div class="tabs">
     <div class="tab on" onclick="settTab(this,'st-icon')">アイコンキー</div>
@@ -473,6 +471,108 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 <script>
+// ═══════════════════════════════════════════════
+//  SUPABASE
+// ═══════════════════════════════════════════════
+const SB_URL  = 'https://udyiglcstfhigxrofbsi.supabase.co';
+const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkeWlnbGNzdGZoaWd4cm9mYnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5ODY0OTcsImV4cCI6MjA5MDU2MjQ5N30.yzsCHHuAh57nFhTxASh3lVuYJrmOrHDZ3fPbN_xKxUQ';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
+// DB行 ↔ アプリオブジェクト変換
+function dbToEq(r){ return {
+  id:r.id, name:r.equipment_name||'', model:r.model_no||'', serial:r.management_no||'',
+  maker:r.maker||'', cat:r.category||'', own:r.own||'自社機材', base:r.base||'',
+  defLoc:r.storage_location||'', qty:r.stock_qty||1, status:r.status||'在庫あり',
+  location:r.current_location||'', holder:r.current_holder||'',
+  slipId:r.current_slip_id||'', fav:r.fav||false, iconKey:r.icon_key||'',
+  color:r.color||'#60a5fa', sort:r.sort_order||0, notes:r.note||'',
+};}
+function eqToDb(e){ return {
+  id:e.id, equipment_name:e.name, model_no:e.model, management_no:e.serial,
+  maker:e.maker, category:e.cat, own:e.own, base:e.base||null,
+  storage_location:e.defLoc, stock_qty:e.qty, status:e.status,
+  current_location:e.location||null, current_holder:e.holder||null,
+  current_slip_id:e.slipId||null, fav:e.fav, icon_key:e.iconKey||null,
+  color:e.color, sort_order:e.sort, note:e.notes||null,
+};}
+function dbToSlip(r){ return {
+  id:r.id, event:r.title||'', client:r.client||'', loc:r.place||'',
+  person:r.person_in_charge||'', start:r.usage_date||'', end:r.usage_end_date||'',
+  checkout:r.checkout_date||'', retPlan:r.return_plan_date||'',
+  retActual:r.return_date||'', status:r.status||'仮登録', notes:r.note||'',
+};}
+function slipToDb(s){ return {
+  id:s.id, title:s.event, client:s.client||null, place:s.loc,
+  person_in_charge:s.person, usage_date:s.start?s.start.slice(0,10):null,
+  usage_end_date:s.end?s.end.slice(0,10):null,
+  checkout_date:s.checkout?s.checkout.slice(0,10):null,
+  return_plan_date:s.retPlan?s.retPlan.slice(0,10):null,
+  return_date:s.retActual?s.retActual.slice(0,10):null,
+  status:s.status, note:s.notes||null,
+};}
+function dbToItem(r){ return {
+  id:r.id, slipId:r.slip_id, eqId:r.equipment_id||'',
+  type:r.item_type||'own', name:r.item_name||'',
+  qty:r.quantity||1, start:r.usage_start||'', end:r.usage_end||'', notes:r.note||'',
+};}
+function itemToDb(i){ return {
+  id:i.id, slip_id:i.slipId, equipment_id:i.eqId||null,
+  item_type:i.type, item_name:i.name||null, quantity:i.qty,
+  usage_start:i.start||null, usage_end:i.end||null, note:i.notes||null,
+};}
+
+async function loadFromDb(){
+  document.body.insertAdjacentHTML('beforeend',
+    '<div id="sb-loading" style="position:fixed;inset:0;background:#0f1117;display:flex;align-items:center;justify-content:center;z-index:9999;font-size:14px;color:#818cf8">データを読み込んでいます…</div>');
+  try {
+    const [eqRes, slipRes, itemRes, locRes] = await Promise.all([
+      sb.from('equipment_master').select('*').order('sort_order'),
+      sb.from('checkout_slips').select('*').order('usage_date', {ascending:false}),
+      sb.from('checkout_slip_lines').select('*'),
+      sb.from('locations').select('*').order('sort_order'),
+    ]);
+    if(eqRes.data?.length){
+      equipment.length=0;
+      eqRes.data.forEach(r=>{ const e=dbToEq(r); equipment.push(e); });
+    }
+    if(slipRes.data?.length){
+      slips.length=0;
+      slipRes.data.forEach(r=>slips.push(dbToSlip(r)));
+    }
+    if(itemRes.data?.length){
+      slipItems.length=0;
+      itemRes.data.forEach(r=>slipItems.push(dbToItem(r)));
+    }
+    if(locRes.data?.length){
+      mLoc.length=0;
+      locRes.data.forEach(r=>mLoc.push({id:r.id, name:r.name}));
+    }
+  } catch(err){ console.error('Supabase load error', err); }
+  document.getElementById('sb-loading')?.remove();
+}
+
+async function saveEqToDb(e){
+  await sb.from('equipment_master').upsert(eqToDb(e));
+}
+async function deleteEqFromDb(id){
+  await sb.from('equipment_master').delete().eq('id',id);
+}
+async function deleteAllEqFromDb(ids){
+  if(ids.length) await sb.from('equipment_master').delete().in('id', ids);
+}
+async function saveSlipToDb(s, items, removedItemIds=[]){
+  await sb.from('checkout_slips').upsert(slipToDb(s));
+  if(removedItemIds.length) await sb.from('checkout_slip_lines').delete().in('id', removedItemIds);
+  if(items.length) await sb.from('checkout_slip_lines').upsert(items.map(itemToDb));
+}
+async function deleteSlipFromDb(id){
+  await sb.from('checkout_slip_lines').delete().eq('slip_id', id);
+  await sb.from('checkout_slips').delete().eq('id', id);
+}
+async function updateEqStatusInDb(id, changes){
+  await sb.from('equipment_master').update(changes).eq('id', id);
+}
+
 // ═══════════════════════════════════════════════
 //  MASTER DATA (Settings)
 // ═══════════════════════════════════════════════
@@ -679,13 +779,13 @@ const ICONS = {
 
 function getIcon(cat,color,size=32,eqId=''){
   if(eqId && customIcons[eqId])
-    return `<div class="eqi" style="width:${size}px;height:${size}px;background:#1a1d27;border:1px solid #252840"><img src="${customIcons[eqId]}" style="width:100%;height:100%;object-fit:contain"></div>`;
+    return `<div class="eqi" style="width:${size}px;height:${size}px;background:${color}22;padding:${size>30?3:2}px;position:relative"><img src="${customIcons[eqId]}" style="width:100%;height:100%;object-fit:contain"><div style="position:absolute;inset:0;background:${color};opacity:0.4;mix-blend-mode:color;pointer-events:none"></div></div>`;
   // iconKey takes precedence over cat for SVG lookup
   const eq = eqId ? equipment.find(e=>e.id===eqId) : null;
   const key = (eq&&eq.iconKey) || cat;
   // アイコンキーレベルのカスタム画像
   if(customIconsByKey[key])
-    return `<div class="eqi" style="width:${size}px;height:${size}px;background:#1a1d27;border:1px solid #252840"><img src="${customIconsByKey[key]}" style="width:100%;height:100%;object-fit:contain"></div>`;
+    return `<div class="eqi" style="width:${size}px;height:${size}px;background:${color}22;padding:${size>30?3:2}px;position:relative"><img src="${customIconsByKey[key]}" style="width:100%;height:100%;object-fit:contain"><div style="position:absolute;inset:0;background:${color};opacity:0.4;mix-blend-mode:color;pointer-events:none"></div></div>`;
   const fn = ICONS[key]||ICONS[cat]||ICONS['周辺機器'];
   return `<div class="eqi" style="width:${size}px;height:${size}px;background:${color}22;padding:${size>30?3:2}px">${fn(color)}</div>`;
 }
@@ -712,6 +812,59 @@ const fmtF = d=>d?new Date(d).toLocaleDateString('ja-JP',{year:'numeric',month:'
 const fmtDT = d=>d?new Date(d).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 const today = ()=>new Date().toISOString().slice(0,10);
 const nowISO = ()=>new Date().toISOString().slice(0,16);
+
+// 次回使用予定を取得
+function getNextUse(eqId){
+  const t=today();
+  const upcoming=slipItems.filter(si=>si.eqId===eqId&&si.start&&si.start.slice(0,10)>=t)
+    .sort((a,b)=>a.start.localeCompare(b.start));
+  if(!upcoming.length) return null;
+  const si=upcoming[0];
+  const sl=slips.find(s=>s.id===si.slipId);
+  return {si,sl};
+}
+
+// 要対応アイテムを収集
+function getAlertItems(){
+  const t=today();
+  const tom=dA(1);
+  const issues=[];
+  // 1. 返却期限超過
+  equipment.forEach(e=>{
+    const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+    if(sl&&sl.retPlan&&sl.retPlan<t&&!sl.retActual&&(e.status==='貸出中'||e.status==='返却待ち')){
+      issues.push({type:'overdue',eq:e,sl,msg:`返却予定日（${fmtF(sl.retPlan)}）を過ぎています`});
+    }
+  });
+  // 2. 明日使用予定なのに貸出中・返却待ち
+  slipItems.forEach(si=>{
+    if(!si.eqId) return;
+    const slipDate=si.start?si.start.slice(0,10):'';
+    if(slipDate===tom){
+      const eq=equipment.find(e=>e.id===si.eqId);
+      if(eq&&(eq.status==='貸出中'||eq.status==='返却待ち')){
+        const sl2=slips.find(s=>s.id===si.slipId);
+        // 紐づく伝票が見つからない（データ不整合で参照切れ）場合は「」のような空表示を避けるため除外
+        if(sl2&&!issues.find(x=>x.eq.id===eq.id&&x.type==='tomorrow'))
+          issues.push({type:'tomorrow',eq,sl:sl2,msg:`明日「${sl2.event}」で使用予定ですが現在「${eq.status}」`});
+      }
+    }
+  });
+  // 3. メンテ中・紛失確認中なのに出庫予定あり
+  equipment.forEach(e=>{
+    if(e.status==='メンテナンス中'||e.status==='紛失・確認中'){
+      const upcoming=slipItems.filter(si=>si.eqId===e.id&&si.start&&si.start.slice(0,10)>=t);
+      upcoming.forEach(si=>{
+        const sl2=slips.find(s=>s.id===si.slipId);
+        if(sl2&&!['返却済み','キャンセル'].includes(sl2.status)){
+          issues.push({type:'unavailable',eq:e,sl:sl2,
+            msg:`${e.status==='メンテナンス中'?'メンテナンス中':'紛失・確認中'}ですが「${sl2.event}」（${fmtF(si.start.slice(0,10))}）に出庫予定`});
+        }
+      });
+    }
+  });
+  return issues;
+}
 
 function checkOverdue(){
   const t = today();
@@ -763,7 +916,7 @@ function renderDashboard(){
   const tokyoLent=lent.filter(e=>e.base==='Tokyo').length;
   const kyotoLent=lent.filter(e=>e.base==='Kyoto').length;
   document.getElementById('db-stats').innerHTML=`
-    <div class="sc p" onclick="nav('eq-status')"><div class="lbl">貸出中（全体）</div><div class="val">${lent.length}</div>
+    <div class="sc p" onclick="filterEqStatus('貸出中')"><div class="lbl">貸出中（全体）</div><div class="val">${lent.length}</div>
       <div style="display:flex;gap:6px;margin-top:4px">
         <span style="font-size:11px;color:#60a5fa">Tokyo: ${tokyoLent}</span>
         <span style="font-size:11px;color:#34d399">Kyoto: ${kyotoLent}</span>
@@ -775,7 +928,8 @@ function renderDashboard(){
   `;
 
   // Today events
-  const near = slips.filter(s=>s.start&&s.start.slice(0,10)>=t&&s.status!=='キャンセル').slice(0,4);
+  const near = slips.filter(s=>s.start&&s.start.slice(0,10)>=t&&s.status!=='キャンセル')
+    .sort((a,b)=>a.start.localeCompare(b.start)).slice(0,4);
   document.getElementById('db-today-events').innerHTML=`
     <div class="card">
       <h3>📅 本日使用予定（${todaySlips.length}件）</h3>
@@ -834,8 +988,24 @@ function renderDashboard(){
     </div>
   </div>`;
 
-  document.getElementById('db-alerts').innerHTML=`<div class="card">
-    <h3>⚠️ メンテナンス・確認中</h3>
+  // 要対応エリア
+  const alerts=getAlertItems();
+  const ALERT_COLOR={'overdue':'#f87171','tomorrow':'#fbbf24','unavailable':'#fb923c'};
+  const ALERT_ICON={'overdue':'🔴','tomorrow':'🟡','unavailable':'🔶'};
+  document.getElementById('db-alerts').innerHTML=`<div class="card mb12">
+    <h3>⚠️ 要対応（${alerts.length}件）</h3>
+    ${alerts.length?alerts.map(({type,eq,sl,msg})=>`
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openDetail('${eq.id}')">
+        ${getIcon(eq.cat,eq.color,24,eq.id)}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:${ALERT_COLOR[type]}">${ALERT_ICON[type]} ${eq.name}</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:1px">${msg}</div>
+        </div>
+      </div>`).join('')
+    :'<div style="padding:12px;text-align:center;color:#34d399;font-size:12px">✅ 要対応なし</div>'}
+  </div>
+  <div class="card">
+    <h3>🔧 メンテナンス・確認中</h3>
     ${[...maint,...lost].map(e=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openDetail('${e.id}')">
       ${getIcon(e.cat,e.color,24,e.id)}
       <div style="flex:1"><div style="font-size:12px;font-weight:600">${e.name}</div><div style="font-size:11px;color:#64748b">${e.location}</div></div>
@@ -846,13 +1016,28 @@ function renderDashboard(){
 
 function filterEqStatus(s){
   nav('eq-status');
-  setTimeout(()=>{ const el=document.getElementById('qs-st'); if(el){el.value=s;renderEqStatus();} },100);
+  const stEl=document.getElementById('qs-st');
+  if(stEl) stEl.value=s;
+  document.querySelectorAll('#qs-chips .chip').forEach(c=>{
+    c.classList.toggle('on', c.textContent===s);
+  });
+  renderEqStatus();
 }
 
 // ═══════════════════════════════════════════════
 //  EQUIPMENT STATUS
 // ═══════════════════════════════════════════════
 let eqView = 'card'; // 'card' | 'list'
+let eqSortCol = '';
+let eqSortDir = 1;
+let erSortCol = '';
+let erSortDir = 1;
+let slSortCol = 'start';
+let slSortDir = -1;
+
+function sortEqBy(col){ if(eqSortCol===col){eqSortDir*=-1;}else{eqSortCol=col;eqSortDir=1;} renderEqStatus(); }
+function sortErBy(col){ if(erSortCol===col){erSortDir*=-1;}else{erSortCol=col;erSortDir=1;} renderEqReg(); }
+function sortSlBy(col){ if(slSortCol===col){slSortDir*=-1;}else{slSortCol=col;slSortDir=-1;} renderSlipList(); }
 
 function toggleEqView(){
   eqView = eqView==='card'?'list':'card';
@@ -866,8 +1051,8 @@ function renderEqStatus(){
   if(stSel.options.length<=1){ mStatus.forEach(s=>{const o=document.createElement('option');o.textContent=s.name;stSel.appendChild(o);}); }
   const catSel=document.getElementById('qs-cat');
   if(catSel.options.length<=1){ mCat.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;catSel.appendChild(o);}); }
-  const ownSel=document.getElementById('qs-own');
-  if(ownSel.options.length<=1){ mOwn.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;ownSel.appendChild(o);}); }
+  const locSel=document.getElementById('qs-loc');
+  if(locSel.options.length<=1){ mLoc.forEach(l=>{const o=document.createElement('option');o.textContent=l.name;locSel.appendChild(o);}); }
 
   // Chips
   const chipEl=document.getElementById('qs-chips');
@@ -876,18 +1061,34 @@ function renderEqStatus(){
   const q=(document.getElementById('qs-q').value||'').toLowerCase();
   const st=document.getElementById('qs-st').value;
   const cat=document.getElementById('qs-cat').value;
-  const own=document.getElementById('qs-own').value;
+  const loc=document.getElementById('qs-loc').value;
   const base=document.getElementById('qs-base').value;
   const chips=[...document.querySelectorAll('#qs-chips .chip.on')].map(c=>c.textContent);
+
+  const slipMapS={};
+  slips.forEach(s=>{ slipMapS[s.id]=s; });
 
   const list = equipment.filter(e=>{
     if(q&&!`${e.name}${e.model}${e.serial}`.toLowerCase().includes(q)) return false;
     if(st&&e.status!==st) return false;
     if(cat&&e.cat!==cat) return false;
-    if(own&&e.own!==own) return false;
+    if(loc&&e.defLoc!==loc) return false;
     if(base&&e.base!==base) return false;
     if(chips.length&&!chips.includes(e.status)) return false;
     return true;
+  }).sort((a,b)=>{
+    if(!eqSortCol) return 0;
+    const sa=slipMapS[a.slipId], sb=slipMapS[b.slipId];
+    let va='',vb='';
+    if(eqSortCol==='name'){va=a.name;vb=b.name;}
+    else if(eqSortCol==='status'){va=a.status;vb=b.status;}
+    else if(eqSortCol==='base'){va=a.base||'';vb=b.base||'';}
+    else if(eqSortCol==='location'){va=a.location||'';vb=b.location||'';}
+    else if(eqSortCol==='holder'){va=a.holder||'';vb=b.holder||'';}
+    else if(eqSortCol==='retPlan'){va=sa?sa.retPlan:'';vb=sb?sb.retPlan:'';}
+    if(va<vb) return -eqSortDir;
+    if(va>vb) return eqSortDir;
+    return 0;
   });
 
   const body=document.getElementById('eq-status-body');
@@ -906,12 +1107,44 @@ function renderEqStatus(){
       </div>`;
     }).join('')}</div>`;
   } else {
+    // ソート適用
+    const slipMap={};
+    slips.forEach(s=>{ slipMap[s.id]=s; });
+    const sorted=[...list].sort((a,b)=>{
+      if(!eqSortCol) return 0;
+      const sa=slipMap[a.slipId];
+      const sb=slipMap[b.slipId];
+      let va='',vb='';
+      if(eqSortCol==='name'){va=a.name;vb=b.name;}
+      else if(eqSortCol==='model'){va=a.model;vb=b.model;}
+      else if(eqSortCol==='serial'){va=a.serial;vb=b.serial;}
+      else if(eqSortCol==='status'){va=a.status;vb=b.status;}
+      else if(eqSortCol==='base'){va=a.base;vb=b.base;}
+      else if(eqSortCol==='location'){va=a.location||'';vb=b.location||'';}
+      else if(eqSortCol==='holder'){va=a.holder||'';vb=b.holder||'';}
+      else if(eqSortCol==='event'){va=sa?sa.event:'';vb=sb?sb.event:'';}
+      else if(eqSortCol==='retPlan'){va=sa?sa.retPlan:'';vb=sb?sb.retPlan:'';}
+      if(va<vb) return -eqSortDir;
+      if(va>vb) return eqSortDir;
+      return 0;
+    });
+    const sh=(col,label)=>{
+      const active=eqSortCol===col;
+      const arrow=active?(eqSortDir===1?' ↑':' ↓'):'';
+      return `<th style="cursor:pointer;user-select:none;${active?'color:#818cf8':''}" onclick="sortEqBy('${col}')">${label}${arrow}</th>`;
+    };
     body.innerHTML=`<div class="tbl-wrap"><table class="tbl"><thead><tr>
-      <th width="44"></th><th>機材名</th><th>型番</th><th>管理番号</th>
-      <th>ステータス</th><th>拠点</th><th>現在地</th><th>保有者</th>
-      <th>使用中イベント</th><th>返却予定</th>
-    </tr></thead><tbody>${list.map(e=>{
-      const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
+      <th width="44"></th>
+      ${sh('name','機材名')}${sh('model','型番')}${sh('serial','管理番号')}
+      ${sh('status','ステータス')}${sh('base','拠点')}${sh('location','現在地')}${sh('holder','保有者')}
+      ${sh('event','使用中イベント')}${sh('retPlan','返却予定')}
+      <th style="white-space:nowrap;color:#64748b;font-size:11px">次回使用予定</th>
+    </tr></thead><tbody>${sorted.map(e=>{
+      const sl=e.slipId?slipMap[e.slipId]:null;
+      const nextUse=getNextUse(e.id);
+      const nextUseHtml=nextUse
+        ?`<div style="font-size:11px;color:#818cf8;white-space:nowrap">${fmt(nextUse.si.start)}</div><div style="font-size:10px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${nextUse.sl?nextUse.sl.event:''}</div>`
+        :'<span style="color:#475569">—</span>';
       return `<tr onclick="openDetail('${e.id}')">
         <td>${getIcon(e.cat,e.color,30,e.id)}</td>
         <td style="font-weight:600">${e.name}</td>
@@ -923,40 +1156,164 @@ function renderEqStatus(){
         <td style="font-size:12px">${e.holder||'—'}</td>
         <td style="font-size:12px;color:#818cf8">${sl?sl.event:'—'}</td>
         <td style="font-size:12px">${sl?fmtF(sl.retPlan):'—'}</td>
+        <td>${nextUseHtml}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
   }
 }
 
 function toggleChip(el,val){
-  el.classList.toggle('on');
+  const wasOn=el.classList.contains('on');
+  document.querySelectorAll('#qs-chips .chip').forEach(c=>c.classList.remove('on'));
   const st=document.getElementById('qs-st');
-  if(el.classList.contains('on')) st.value=val;
-  else st.value='';
+  if(!wasOn){ el.classList.add('on'); st.value=val; }
+  else { st.value=''; }
   renderEqStatus();
 }
 
 // ═══════════════════════════════════════════════
 //  DETAIL
 // ═══════════════════════════════════════════════
+function toggleLendForm(id){
+  const f=document.getElementById('lend-form-'+id);
+  if(!f) return;
+  f.style.display=f.style.display==='none'?'':'none';
+}
+
+function saveLending(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  const newLoc=document.getElementById('lf-loc-'+id).value.trim()||e.defLoc;
+  const newHolder=document.getElementById('lf-holder-'+id).value.trim();
+  const newEvent=document.getElementById('lf-event-'+id).value.trim();
+  const newRetPlan=document.getElementById('lf-ret-'+id).value;
+  const oldLoc=e.location||e.defLoc;
+  // 伝票IDを名前検索でマッチング（任意）
+  const matchSlip=newEvent?slips.find(s=>s.event===newEvent):null;
+  historyLog.push({
+    id:crypto.randomUUID(),eqId:id,
+    dt:new Date().toISOString().slice(0,16),
+    op:'出庫',from:oldLoc,to:newLoc,
+    fromP:'',toP:newHolder,
+    slip:matchSlip?matchSlip.id:'',
+    memo:newEvent
+  });
+  e.status='貸出中';
+  e.location=newLoc;
+  e.holder=newHolder;
+  if(matchSlip) e.slipId=matchSlip.id;
+  saveToLocal();
+  openDetail(id);
+}
+
+function saveReturn(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  const oldLoc=e.location||'';
+  historyLog.push({
+    id:crypto.randomUUID(),eqId:id,
+    dt:new Date().toISOString().slice(0,16),
+    op:'返却',from:oldLoc,to:e.defLoc,
+    fromP:e.holder||'',toP:'',
+    slip:e.slipId||'',memo:''
+  });
+  e.status='在庫あり';
+  e.location=e.defLoc;
+  e.holder='';
+  e.slipId='';
+  saveToLocal();
+  openDetail(id);
+}
+
+function toggleStatusForm(id){
+  const f=document.getElementById('status-form-'+id);
+  if(!f) return;
+  f.style.display=f.style.display==='none'?'':'none';
+}
+
+function saveStatusUpdate(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  const newStatus=document.getElementById('sf-up-status-'+id).value;
+  const newLoc=document.getElementById('sf-up-loc-'+id).value.trim();
+  const memo=document.getElementById('sf-up-memo-'+id).value.trim();
+  const oldStatus=e.status;
+  const oldLoc=e.location||'';
+  if(newStatus===oldStatus && newLoc===oldLoc && !memo){ toggleStatusForm(id); return; }
+  historyLog.push({
+    id:crypto.randomUUID(),eqId:id,
+    dt:new Date().toISOString().slice(0,16),
+    op:'状況更新',from:oldStatus,to:newStatus,
+    fromP:oldLoc,toP:newLoc||oldLoc,
+    slip:'',memo:memo
+  });
+  e.status=newStatus;
+  if(newLoc) e.location=newLoc;
+  saveToLocal();
+  saveEqToDb(e);
+  openDetail(id);
+}
+
 function openDetail(id){
   const e=equipment.find(x=>x.id===id);
   if(!e) return;
-  prevView=currentView;
+  const savedPrev = currentView !== 'detail' ? currentView : prevView;
   nav('detail');
+  prevView = savedPrev;
   const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
   const hist=historyLog.filter(h=>h.eqId===id).sort((a,b)=>b.dt.localeCompare(a.dt));
-  const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635'};
+  const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635','状況更新':'#fbbf24'};
+
+  // この機材が使われた全伝票を収集
+  const linkedSlipIds=[...new Set(slipItems.filter(si=>si.eqId===id).map(si=>si.slipId))];
+  const linkedSlips=linkedSlipIds.map(sid=>slips.find(s=>s.id===sid)).filter(Boolean)
+    .sort((a,b)=>(b.start||'').localeCompare(a.start||''));
+
   document.getElementById('detail-body').innerHTML=`
     <div class="dh">
       ${getIcon(e.cat,e.color,56,e.id)}
       <div>
         <h2>${e.name}</h2>
         <div class="dsub">${e.model} | ${e.serial} | ${e.cat} | ${e.own}</div>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           ${ebdg(e.status)}
-          <button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId||''}')">伝票を見る</button>
+          ${e.status==='在庫あり'?`<button class="btn btn-p btn-sm" onclick="toggleLendForm('${e.id}')">📤 貸出</button>`:''}
+          ${(e.status==='貸出中'||e.status==='返却待ち')?`<button class="btn btn-s btn-sm" onclick="saveReturn('${e.id}')">📥 返却</button>`:''}
+          ${(e.status==='メンテナンス中'||e.status==='紛失・確認中')?`<button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">🔧 状況を更新</button>`:''}
+          ${e.slipId?`<button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId}')">伝票を見る</button>`:''}
         </div>
+      </div>
+    </div>
+    <div id="lend-form-${e.id}" class="card mb12" style="display:none;border-color:#6366f1">
+      <h3 style="margin-bottom:12px">📤 貸出情報を入力</h3>
+      <div class="g2">
+        <div class="fg"><label>現在地</label><input id="lf-loc-${e.id}" value="${e.location||e.defLoc}" placeholder="場所を入力"></div>
+        <div class="fg"><label>保有者</label><input id="lf-holder-${e.id}" value="${e.holder||''}" placeholder="担当者名"></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label>使用中イベント</label>
+          <input id="lf-event-${e.id}" list="lf-slip-list-${e.id}" placeholder="イベント名（任意）" value="">
+          <datalist id="lf-slip-list-${e.id}">${slips.filter(s=>!['返却済み','キャンセル'].includes(s.status)).map(s=>`<option value="${s.event}">`).join('')}</datalist>
+        </div>
+        <div class="fg"><label>返却予定日</label><input type="date" id="lf-ret-${e.id}" style="color-scheme:dark"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveLending('${e.id}')">保存する</button>
+        <button class="btn btn-s btn-sm" onclick="toggleLendForm('${e.id}')">キャンセル</button>
+      </div>
+    </div>
+    <div id="status-form-${e.id}" class="card mb12" style="display:none;border-color:#6366f1">
+      <h3 style="margin-bottom:12px">🔧 状況を更新</h3>
+      <div class="g2">
+        <div class="fg"><label>新しいステータス</label>
+          <select id="sf-up-status-${e.id}">${mStatus.map(st=>`<option value="${st.name}"${st.name===e.status?' selected':''}>${st.name}</option>`).join('')}</select>
+        </div>
+        <div class="fg"><label>現在地</label><input id="sf-up-loc-${e.id}" value="${e.location||''}" placeholder="場所を入力"></div>
+      </div>
+      <div class="fg"><label>メモ（更新内容・経緯など）</label><textarea id="sf-up-memo-${e.id}" rows="2" placeholder="例：送信部の修理が完了し受領"></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveStatusUpdate('${e.id}')">保存する</button>
+        <button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">キャンセル</button>
       </div>
     </div>
     <div class="card mb12">
@@ -972,13 +1329,34 @@ function openDetail(id){
       </div>
       ${e.notes?`<div style="font-size:12px;color:#94a3b8;border-top:1px solid #252840;padding-top:8px;margin-top:4px">📝 ${e.notes}</div>`:''}
     </div>
+    <div class="card mb12">
+      <h3>使用伝票履歴（${linkedSlips.length}件）</h3>
+      ${linkedSlips.length?linkedSlips.map(s=>{
+        const items=slipItems.filter(i=>i.slipId===s.id&&i.eqId===id);
+        const isCurrent=s.id===e.slipId;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1a1d27;cursor:pointer" onclick="openSlipDetail('${s.id}')">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              ${sbdg(s.status)}
+              ${isCurrent?'<span style="font-size:10px;background:#2a1f3d;color:#a78bfa;padding:1px 5px;border-radius:3px" title="この機材の現在の使用伝票として連動しています">📌 現在の伝票</span>':''}
+              <span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.event}</span>
+            </div>
+            <div style="font-size:11px;color:#64748b">${s.loc} / ${s.person}</div>
+            <div style="font-size:11px;color:#475569">${fmt(s.start)}〜${fmt(s.end)} 　出庫: ${fmtF(s.checkout)||'—'} 　返却予定: ${fmtF(s.retPlan)||'—'}${s.retActual?' 　実返却: '+fmtF(s.retActual):''}</div>
+            ${items.map(i=>`<span style="font-size:10px;color:#94a3b8;margin-right:6px">×${i.qty}${i.notes?' ('+i.notes+')':''}</span>`).join('')}
+          </div>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#475569" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg>
+        </div>`;
+      }).join(''):'<div class="empty" style="padding:12px">伝票なし</div>'}
+    </div>
     <div class="card">
-      <h3>移動履歴</h3>
-      ${hist.length?`<div class="tline">${hist.map(h=>`<div class="tl">
+      <h3>移動履歴${hist.length>3?`<span style="font-size:11px;color:#64748b;font-weight:400;margin-left:8px">直近3件 / 全${hist.length}件</span>`:''}</h3>
+      ${hist.length?`<div class="tline">${hist.slice(0,3).map(h=>`<div class="tl">
         <div class="tdt">${fmtDT(h.dt)}</div>
         <div class="top" style="color:${opC[h.op]||'#94a3b8'}">${h.op}</div>
         <div class="tdet">${h.from}→${h.to}${h.fromP?` / ${h.fromP}→${h.toP||''}`:''}</div>
         ${h.slip?`<div class="tdet" style="color:#818cf8">${slips.find(s=>s.id===h.slip)?.event||h.slip}</div>`:''}
+        ${h.memo&&!h.slip?`<div class="tdet" style="color:#818cf8">${h.memo}</div>`:''}
       </div>`).join('')}</div>`:'<div class="empty">履歴なし</div>'}
     </div>
   `;
@@ -1071,8 +1449,29 @@ function renderSlipList(){
     if(q&&!`${s.event}${s.loc}${s.person}${s.client}`.toLowerCase().includes(q)) return false;
     if(st&&s.status!==st) return false;
     return true;
-  }).sort((a,b)=>b.start.localeCompare(a.start));
-  document.getElementById('slip-list-body').innerHTML=list.length?list.map(s=>{
+  }).sort((a,b)=>{
+    let va='',vb='';
+    if(slSortCol==='status'){va=a.status;vb=b.status;}
+    else if(slSortCol==='event'){va=a.event;vb=b.event;}
+    else if(slSortCol==='loc'){va=a.loc;vb=b.loc;}
+    else if(slSortCol==='person'){va=a.person;vb=b.person;}
+    else if(slSortCol==='start'){va=a.start;vb=b.start;}
+    else if(slSortCol==='checkout'){va=a.checkout||'';vb=b.checkout||'';}
+    else if(slSortCol==='retPlan'){va=a.retPlan||'';vb=b.retPlan||'';}
+    else if(slSortCol==='cnt'){
+      const ca=slipItems.filter(i=>i.slipId===a.id).length;
+      const cb=slipItems.filter(i=>i.slipId===b.id).length;
+      return (ca-cb)*slSortDir;
+    }
+    if(va<vb) return -slSortDir;
+    if(va>vb) return slSortDir;
+    return 0;
+  });
+  const slSh=(col,label)=>{
+    const active=slSortCol===col; const arr=active?(slSortDir===1?' ↑':' ↓'):'';
+    return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:#818cf8':''}" onclick="sortSlBy('${col}')">${label}${arr}</th>`;
+  };
+  const rows=list.length?list.map(s=>{
     const cnt=slipItems.filter(i=>i.slipId===s.id).length;
     return `<tr onclick="openSlipDetail('${s.id}')">
       <td>${sbdg(s.status)}</td>
@@ -1085,13 +1484,47 @@ function renderSlipList(){
       <td style="font-size:12px;color:#818cf8">${cnt}点</td>
     </tr>`;
   }).join(''):`<tr><td colspan="8" class="empty">伝票なし</td></tr>`;
+  document.getElementById('slip-tbl-wrap').innerHTML=`<table class="tbl"><thead><tr>
+    ${slSh('status','ステータス')}${slSh('event','イベント名')}${slSh('loc','場所')}${slSh('person','担当者')}
+    ${slSh('start','使用日')}${slSh('checkout','出庫日')}${slSh('retPlan','返却予定')}${slSh('cnt','機材数')}
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+const SLIP_STATUS_STYLE={
+  '仮登録':  {bg:'#252840',fg:'#64748b'},
+  '準備中':  {bg:'#1e2a4a',fg:'#60a5fa'},
+  '出庫済み':{bg:'#2a1f3d',fg:'#a78bfa'},
+  '使用中':  {bg:'#1f2a3d',fg:'#818cf8'},
+  '返却待ち':{bg:'#2d2a1a',fg:'#fbbf24'},
+  '返却済み':{bg:'#1e3a2f',fg:'#34d399'},
+  '未返却':  {bg:'#3a1a1a',fg:'#f87171'},
+  'キャンセル':{bg:'#1e1e1e',fg:'#475569'},
+};
+
+function changeSlipStatus(slipId, newStatus){
+  const s=slips.find(x=>x.id===slipId);
+  if(!s||s.status===newStatus) return;
+  s.status=newStatus;
+  // 機材ステータスも連動
+  slipItems.filter(i=>i.slipId===slipId&&i.eqId).forEach(i=>{
+    const eq=equipment.find(e=>e.id===i.eqId);
+    if(!eq) return;
+    if(['出庫済み','使用中'].includes(newStatus)){ eq.status='貸出中'; eq.location=s.loc; eq.holder=s.person; eq.slipId=slipId; }
+    else if(newStatus==='返却待ち'){ eq.status='返却待ち'; }
+    else if(newStatus==='返却済み'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; eq.slipId=''; }
+  });
+  // select の色を更新
+  const sel=event.target;
+  const style=SLIP_STATUS_STYLE[newStatus]||{bg:'#252840',fg:'#64748b'};
+  sel.style.background=style.bg; sel.style.color=style.fg;
+  saveToLocal();
 }
 
 function openSlipDetail(id){
   if(!id) return;
   const s=slips.find(x=>x.id===id);
   if(!s){ if(currentView==='detail'||currentView==='dashboard') return; return; }
-  if(currentView!=='slip'){ nav('slip'); setTimeout(()=>openSlipDetail(id),200); return; }
+  if(currentView!=='slip'){ nav('slip'); openSlipDetail(id); return; }
   document.getElementById('slip-list-panel').style.display='none';
   document.getElementById('slip-form-panel').style.display='none';
   document.getElementById('slip-detail-panel').style.display='';
@@ -1100,7 +1533,9 @@ function openSlipDetail(id){
     <div class="g2 mb12">
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div>${sbdg(s.status)}</div>
+          <select onchange="changeSlipStatus('${s.id}',this.value)" style="background:${(SLIP_STATUS_STYLE[s.status]||{bg:'#252840'}).bg};color:${(SLIP_STATUS_STYLE[s.status]||{fg:'#64748b'}).fg};border:none;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;outline:none">
+            ${['仮登録','準備中','出庫済み','使用中','返却待ち','返却済み','未返却','キャンセル'].map(st=>`<option value="${st}" ${st===s.status?'selected':''}>${st}</option>`).join('')}
+          </select>
           <button class="btn btn-s btn-sm" onclick="openSlipForm('${s.id}')">編集</button>
         </div>
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">${s.event}</div>
@@ -1135,7 +1570,7 @@ function openSlipDetail(id){
 
 function openSlipForm(id=''){
   // ensure we are in slip view
-  if(currentView!=='slip'){ nav('slip'); setTimeout(()=>openSlipForm(id),200); return; }
+  if(currentView!=='slip'){ nav('slip'); openSlipForm(id); return; }
   editingSlipId=id||null;
   document.getElementById('slip-list-panel').style.display='none';
   document.getElementById('slip-detail-panel').style.display='none';
@@ -1146,12 +1581,20 @@ function openSlipForm(id=''){
   sfItemCount=0;
 
   const s=id?slips.find(x=>x.id===id):null;
+  // datetime-local 入力は "YYYY-MM-DDTHH:mm" 形式以外を受け付けず、
+  // 日付のみ（例: Supabase の date型から来た "2026-06-05"）を渡すと値が空にリセットされてしまう。
+  // それを編集→保存すると開始日・終了日が空文字になり、ダッシュボードの一覧から消えてしまうため、時刻を補完する。
+  const toDtLocal=v=>{
+    if(!v) return '';
+    const str=String(v);
+    return /^\d{4}-\d{2}-\d{2}$/.test(str) ? str+'T00:00' : str.slice(0,16);
+  };
   document.getElementById('sf-event').value=s?s.event:'';
   document.getElementById('sf-client').value=s?s.client:'';
   document.getElementById('sf-loc').value=s?s.loc:'';
   document.getElementById('sf-person').value=s?s.person:'';
-  document.getElementById('sf-start').value=s&&s.start?s.start.slice(0,16):'';
-  document.getElementById('sf-end').value=s&&s.end?s.end.slice(0,16):'';
+  document.getElementById('sf-start').value=s?toDtLocal(s.start):'';
+  document.getElementById('sf-end').value=s?toDtLocal(s.end):'';
   document.getElementById('sf-checkout').value=s?s.checkout:'';
   document.getElementById('sf-ret-plan').value=s?s.retPlan:'';
   document.getElementById('sf-ret-actual').value=s?s.retActual:'';
@@ -1164,6 +1607,53 @@ function openSlipForm(id=''){
 }
 
 let sfItemCount=0;
+
+function checkEqConflicts(eqId,rowId){
+  const row=document.getElementById(rowId);
+  if(!row) return;
+  let warn=row.querySelector('.eq-warn');
+  if(!warn){ warn=document.createElement('div'); warn.className='eq-warn'; warn.style.cssText='grid-column:1/-1;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:2px'; row.after(warn); }
+  warn.innerHTML='';
+  if(!eqId) return;
+  const eq=equipment.find(e=>e.id===eqId);
+  if(!eq) return;
+  const msgs=[];
+  // ステータスチェック
+  if(eq.status==='メンテナンス中') msgs.push(`⚠ <strong>${eq.name}</strong> は現在メンテナンス中です`);
+  else if(eq.status==='紛失・確認中') msgs.push(`⚠ <strong>${eq.name}</strong> は紛失・確認中です`);
+  else if(eq.status==='貸出中'){
+    const sl=eq.slipId?slips.find(s=>s.id===eq.slipId):null;
+    msgs.push(`⚠ <strong>${eq.name}</strong> は現在貸出中です${sl?'（'+sl.event+'、返却予定: '+fmtF(sl.retPlan)+'）':''}`);
+  } else if(eq.status==='返却待ち'){
+    msgs.push(`⚠ <strong>${eq.name}</strong> は現在返却待ちです`);
+  }
+  // 重複予約チェック（既存slipItemsとの期間重複）
+  const sfStart=document.getElementById('sf-start')?.value;
+  const sfEnd=document.getElementById('sf-end')?.value;
+  if(sfStart||sfEnd){
+    const newStart=(sfStart||'').slice(0,10);
+    const newEnd=(sfEnd||'').slice(0,10);
+    slipItems.filter(si=>si.eqId===eqId&&si.slipId!==editingSlipId).forEach(si=>{
+      const siStart=si.start?si.start.slice(0,10):'';
+      const siEnd=si.end?si.end.slice(0,10):siStart;
+      const overlap=(newStart<=siEnd&&newEnd>=siStart)||(newStart<=siStart&&newEnd>=siStart)||(newStart>=siStart&&newStart<=siEnd);
+      if(overlap){
+        const sl=slips.find(s=>s.id===si.slipId);
+        if(sl&&!['返却済み','キャンセル'].includes(sl.status))
+          msgs.push(`⚠ 期間が別イベント「${sl.event}」（${fmt(siStart)}〜${fmt(siEnd)}）と重複しています`);
+      }
+    });
+  }
+  if(msgs.length){
+    warn.style.background='#3a2010';
+    warn.style.border='1px solid #fb923c44';
+    warn.style.color='#fb923c';
+    warn.innerHTML=msgs.join('<br>');
+  } else {
+    warn.remove();
+  }
+}
+
 function addSlipItem(type,data=null){
   sfItemCount++;
   const rowId='sfi-'+sfItemCount;
@@ -1174,23 +1664,59 @@ function addSlipItem(type,data=null){
   div.innerHTML=`
     ${ibdg(type)}
     <div>${isOwn
-      ?`<select class="si-eq" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none"><option value="">選択…</option>${eqOptions}</select>`
+      ?`<select class="si-eq" onchange="checkEqConflicts(this.value,'${rowId}')" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none"><option value="">選択…</option>${eqOptions}</select>`
       :`<input class="si-name" placeholder="機材名を入力" style="width:100%;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none" value="${data?data.name:''}">`
     }</div>
     <input type="number" class="si-qty" value="${data?data.qty:1}" min="1" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
     <input type="datetime-local" class="si-start" value="${data?data.start.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
     <input type="datetime-local" class="si-end" value="${data?data.end.slice(0,16):''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:4px 6px;color:#e2e8f0;font-size:11px;outline:none;width:100%;color-scheme:dark">
     <input class="si-note" placeholder="備考" value="${data?data.notes:''}" style="background:#0f1117;border:1px solid #252840;border-radius:4px;padding:5px 6px;color:#e2e8f0;font-size:12px;outline:none;width:100%">
-    <button class="btn btn-d btn-xs" onclick="document.getElementById('${rowId}').remove()">✕</button>
+    <button class="btn btn-d btn-xs" onclick="document.getElementById('${rowId}').remove();const w=document.getElementById('${rowId}')?.nextSibling;if(w&&w.classList?.contains('eq-warn'))w.remove()">✕</button>
   `;
   document.getElementById('sf-items').appendChild(div);
-  if(data&&isOwn){ const sel=div.querySelector('.si-eq'); if(sel) sel.value=data.eqId||''; }
+  if(data&&isOwn){
+    const sel=div.querySelector('.si-eq');
+    if(sel){ sel.value=data.eqId||''; if(data.eqId) checkEqConflicts(data.eqId,rowId); }
+  }
+}
+
+// 機材に紐づく伝票の中から「現在最も該当する伝票」を日程基準で判定する
+// （返却済み・キャンセルは除外し、①使用期間が今日を含むもの→②直近の予定→③直近の過去、の優先順で選ぶ）
+// 「使用中イベント」「貸出中／返却待ち」は、あくまで“今まさに出庫されている伝票”だけに連動させる。
+// 仮登録・準備中・将来予定の伝票は、機材の現在ステータスや現在地を上書きしない（日程と表記の食い違いを防ぐ）。
+function syncEqWithCurrentSlip(eqId){
+  const eq=equipment.find(e=>e.id===eqId);
+  if(!eq) return;
+  // メンテナンス中・紛失確認中は伝票連動の対象外（手動の状況更新で管理）
+  if(eq.status==='メンテナンス中'||eq.status==='紛失・確認中') return;
+  const t=today();
+  const dateOf=s=>({start:s.start?s.start.slice(0,10):'',end:s.end?s.end.slice(0,10):''});
+  const linked=[...new Set(slipItems.filter(si=>si.eqId===eqId).map(si=>si.slipId))]
+    .map(sid=>slips.find(s=>s.id===sid)).filter(Boolean);
+  // 「現在まさに持ち出し中」とみなせる伝票 = 使用期間が今日を含み、かつ伝票ステータスが実出庫系（出庫済み/使用中/返却待ち）
+  const active=linked.filter(s=>{
+    const d=dateOf(s);
+    return !['返却済み','キャンセル'].includes(s.status)&&d.start&&d.start<=t&&(!d.end||d.end>=t)
+      &&['出庫済み','使用中','返却待ち'].includes(s.status);
+  }).sort((a,b)=>dateOf(b).start.localeCompare(dateOf(a).start));
+
+  if(active.length){
+    const cur=active[0];
+    eq.slipId=cur.id;
+    if(['出庫済み','使用中'].includes(cur.status)){ eq.status='貸出中'; eq.location=cur.loc; eq.holder=cur.person; }
+    else { eq.status='返却待ち'; eq.location=cur.loc; eq.holder=cur.person; }
+  } else {
+    // 今まさに出庫中の伝票が無い → 伝票リンクを外し、貸出中／返却待ちのままなら在庫に戻す
+    // （仮登録・準備中・将来予定は「近日のイベント」等で別途確認できるため、ここでは紐付けない）
+    eq.slipId='';
+    if(eq.status==='貸出中'||eq.status==='返却待ち'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; }
+  }
 }
 
 function saveSlip(){
   const name=document.getElementById('sf-event').value.trim();
   if(!name){ alert('イベント名は必須です'); return; }
-  const id=editingSlipId||('SL'+Date.now());
+  const id=editingSlipId||(crypto.randomUUID());
   const slip={
     id,event:name,client:document.getElementById('sf-client').value,
     loc:document.getElementById('sf-loc').value,person:document.getElementById('sf-person').value,
@@ -1204,11 +1730,14 @@ function saveSlip(){
   if(editingSlipId){ const i=slips.findIndex(s=>s.id===editingSlipId); if(i>=0) slips[i]=slip; }
   else slips.push(slip);
 
-  // Remove old items
-  const removeIds=slipItems.filter(i=>i.slipId===id).map(i=>i.id);
+  // Remove old items（紐づいていた機材IDも記録して、変更後の状態を再計算する）
+  const oldItems=slipItems.filter(i=>i.slipId===id);
+  const removeIds=oldItems.map(i=>i.id);
+  const affectedEqIds=new Set(oldItems.filter(i=>i.eqId).map(i=>i.eqId));
   removeIds.forEach(rid=>{ const idx=slipItems.findIndex(i=>i.id===rid); if(idx>=0) slipItems.splice(idx,1); });
+  const newItems=[];
 
-  // Save new items & update equipment
+  // Save new items
   document.querySelectorAll('#sf-items .si-row').forEach(row=>{
     const type=row.dataset.type;
     const isOwn=type==='own';
@@ -1220,22 +1749,18 @@ function saveSlip(){
     const start=row.querySelector('.si-start').value;
     const end=row.querySelector('.si-end').value;
     const notes=row.querySelector('.si-note').value;
-    const item={id:'SI'+Date.now()+Math.random(),slipId:id,type,eqId:eqId||null,name:iname,qty,start,end,notes};
+    const item={id:crypto.randomUUID(),slipId:id,type,eqId:eqId||null,name:iname,qty,start,end,notes};
     slipItems.push(item);
-    // Update equipment status
-    if(eqId){
-      const eq=equipment.find(e=>e.id===eqId);
-      if(eq){
-        eq.slipId=id;
-        if(['出庫済み','使用中'].includes(slip.status)){ eq.status='貸出中'; eq.location=slip.loc; eq.holder=slip.person; }
-        else if(slip.status==='返却待ち'){ eq.status='返却待ち'; }
-        else if(slip.status==='返却済み'){ eq.status='在庫あり'; eq.location=eq.defLoc; eq.holder=''; eq.slipId=''; }
-      }
-    }
+    newItems.push(item);
+    if(eqId) affectedEqIds.add(eqId);
   });
+  // 機材ごとに「現在もっとも該当する伝票」を日程基準で再計算し、状態を同期する
+  // （保存した伝票が将来予定／仮の伝票でも、それだけで現在の使用伝票が上書きされないようにする）
+  affectedEqIds.forEach(eqId=>syncEqWithCurrentSlip(eqId));
   // Refresh calendar
   if(calInstance){ calInstance.destroy(); calInstance=null; }
   saveToLocal();
+  saveSlipToDb(slip, newItems, removeIds);
   alert('保存しました');
   closeSlipForm();
 }
@@ -1244,9 +1769,13 @@ function deleteSlip(){
   if(!editingSlipId||!confirm('この伝票を削除しますか？')) return;
   const i=slips.findIndex(s=>s.id===editingSlipId);
   if(i>=0) slips.splice(i,1);
-  slipItems.filter(i=>i.slipId===editingSlipId).forEach(item=>{ const idx=slipItems.indexOf(item); if(idx>=0) slipItems.splice(idx,1); });
+  const removed=slipItems.filter(i=>i.slipId===editingSlipId);
+  const affectedEqIds=[...new Set(removed.filter(it=>it.eqId).map(it=>it.eqId))];
+  removed.forEach(item=>{ const idx=slipItems.indexOf(item); if(idx>=0) slipItems.splice(idx,1); });
+  affectedEqIds.forEach(eqId=>syncEqWithCurrentSlip(eqId));
   if(calInstance){ calInstance.destroy(); calInstance=null; }
   saveToLocal();
+  deleteSlipFromDb(editingSlipId);
   closeSlipForm();
 }
 
@@ -1264,8 +1793,29 @@ function renderEqReg(){
     if(q&&!`${e.name}${e.model}${e.serial}`.toLowerCase().includes(q)) return false;
     if(cat&&e.cat!==cat) return false;
     return true;
-  }).sort((a,b)=>a.sort-b.sort);
-  document.getElementById('er-body').innerHTML=list.map(e=>`<tr>
+  }).sort((a,b)=>{
+    if(!erSortCol) return a.sort-b.sort;
+    let va='',vb='';
+    if(erSortCol==='name'){va=a.name;vb=b.name;}
+    else if(erSortCol==='model'){va=a.model;vb=b.model;}
+    else if(erSortCol==='serial'){va=a.serial;vb=b.serial;}
+    else if(erSortCol==='cat'){va=a.cat;vb=b.cat;}
+    else if(erSortCol==='own'){va=a.own;vb=b.own;}
+    else if(erSortCol==='defLoc'){va=a.defLoc;vb=b.defLoc;}
+    else if(erSortCol==='qty'){return (a.qty-b.qty)*erSortDir;}
+    if(va<vb) return -erSortDir;
+    if(va>vb) return erSortDir;
+    return 0;
+  });
+  const erSh=(col,label,w)=>{
+    const a=erSortCol===col; const arr=a?(erSortDir===1?' ↑':' ↓'):'';
+    return `<th${w?' width="'+w+'"':''} style="cursor:pointer;user-select:none;white-space:nowrap;${a?'color:#818cf8':''}" onclick="sortErBy('${col}')">${label}${arr}</th>`;
+  };
+  document.getElementById('er-tbl-wrap').innerHTML=`<table class="tbl"><thead><tr>
+    <th width="44"></th>
+    ${erSh('name','機材名')}${erSh('model','型番')}${erSh('serial','管理番号')}
+    ${erSh('cat','種別')}${erSh('own','所有区分')}${erSh('defLoc','管理場所')}${erSh('qty','在庫数',60)}<th></th>
+  </tr></thead><tbody>${list.map(e=>`<tr>
     <td>${getIcon(e.cat,e.color,30,e.id)}</td>
     <td style="font-weight:600">${e.name}${e.fav?'<span style="color:#fbbf24;margin-left:4px">★</span>':''}</td>
     <td style="color:#94a3b8">${e.model}</td>
@@ -1275,7 +1825,7 @@ function renderEqReg(){
     <td style="font-size:12px;color:#94a3b8">${e.defLoc}</td>
     <td style="font-size:12px">${e.qty}</td>
     <td><button class="btn btn-s btn-xs" onclick="openEqForm('${e.id}')">編集</button></td>
-  </tr>`).join('');
+  </tr>`).join('')}</tbody></table>`;
 }
 
 function openEqForm(id=''){
@@ -1327,7 +1877,7 @@ function saveEq(){
   const name=document.getElementById('ef-name').value.trim();
   const model=document.getElementById('ef-model').value.trim();
   if(!name||!model){ alert('機材名と型番は必須です'); return; }
-  const id=editingEqId||('E'+String(equipment.length+100).padStart(3,'0'));
+  const id=editingEqId||(crypto.randomUUID());
   if(pendingEfIcon) customIcons[id]=pendingEfIcon;
   const defLoc=document.getElementById('ef-loc').value;
   const data={
@@ -1348,6 +1898,7 @@ function saveEq(){
   if(editingEqId){ const i=equipment.findIndex(e=>e.id===editingEqId); if(i>=0){ Object.assign(equipment[i],data); } }
   else equipment.push(data);
   saveToLocal();
+  saveEqToDb(data);
   alert('保存しました');
   closeEqForm();
   renderEqReg();
@@ -1358,7 +1909,19 @@ function deleteEq(){
   const i=equipment.findIndex(e=>e.id===editingEqId);
   if(i>=0) equipment.splice(i,1);
   saveToLocal();
+  deleteEqFromDb(editingEqId);
   closeEqForm(); renderEqReg();
+}
+
+async function clearAllEquipment(){
+  if(!equipment.length){ alert('削除する機材データがありません'); return; }
+  if(!confirm('登録されている機材を全て削除します（全'+equipment.length+'件）。\nこの操作は取り消せません。よろしいですか？')) return;
+  const ids = equipment.map(e=>e.id);
+  equipment.length = 0;
+  saveToLocal();
+  renderEqReg();
+  try{ await deleteAllEqFromDb(ids); }catch(err){ console.error('全削除エラー', err); }
+  alert('機材リストを全て削除しました');
 }
 
 function handleEfIcon(event){
@@ -1410,9 +1973,9 @@ function renderIconKeyList(){
         return `<div style="background:#1a1d27;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:10px;padding:14px;text-align:center;position:relative">
           ${idx>=10?`<button onclick="deleteIconKey(${idx})" style="position:absolute;top:6px;right:6px;background:none;border:none;color:#475569;cursor:pointer;font-size:12px" title="削除">✕</button>`:''}
           <div style="width:56px;height:56px;margin:0 auto 10px">${getIcon(ic.key,'#818cf8',56)}</div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${ic.label}</div>
-          <div style="font-size:11px;color:#64748b;margin-bottom:8px;min-height:16px">${ic.desc||''}</div>
-          <code style="font-size:10px;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:2px 8px;color:#94a3b8">${ic.key}</code>
+          <input value="${ic.label}" onblur="updateIconKey(${idx},'label',this.value)" placeholder="表示名" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#e2e8f0;font-size:14px;font-weight:700;margin-bottom:2px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#0f1117'">
+          <input value="${ic.desc||''}" onblur="updateIconKey(${idx},'desc',this.value)" placeholder="説明" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#64748b;font-size:11px;margin-bottom:8px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#0f1117'">
+          <input value="${ic.key}" onblur="updateIconKey(${idx},'key',this.value)" placeholder="キー名" style="width:100%;text-align:center;background:#0f1117;border:1px solid #252840;border-radius:4px;padding:2px 8px;color:#94a3b8;font-size:10px;font-family:monospace;outline:none" onfocus="this.style.borderColor='#6366f1'">
           <div style="display:flex;gap:6px;justify-content:center;margin-top:10px">
             <label class="btn btn-s btn-xs" style="cursor:pointer" title="カスタム画像をアップロード">
               📷 画像変更
@@ -1434,6 +1997,35 @@ function deleteIconKey(idx){
   if(key) delete customIconsByKey[key];
   renderIconKeyList();
   saveToLocal();
+}
+
+function updateIconKey(idx,field,val){
+  const ic=mIcons[idx]; if(!ic) return;
+  const v=(val==null?'':String(val)).trim();
+  if(field==='key'){
+    if(!v){ alert('キー名を入力してください'); renderIconKeyList(); renderIconSettings(); return; }
+    if(v===ic.key) return;
+    if(mIcons.some((m,i)=>i!==idx&&m.key===v)){ alert('同じキーが既に存在します'); renderIconKeyList(); renderIconSettings(); return; }
+    const oldKey=ic.key;
+    ic.key=v;
+    // カスタム画像の紐付けを移動
+    if(Object.prototype.hasOwnProperty.call(customIconsByKey,oldKey)){
+      customIconsByKey[v]=customIconsByKey[oldKey];
+      delete customIconsByKey[oldKey];
+    }
+    // このキーを参照している機材・種別マスターを追従させる
+    equipment.forEach(e=>{ if(e.iconKey===oldKey) e.iconKey=v; });
+    mCat.forEach(c=>{ if(c.icon===oldKey) c.icon=v; });
+  } else if(field==='label'){
+    ic.label=v||ic.key;
+  } else if(field==='desc'){
+    ic.desc=v;
+  } else {
+    return;
+  }
+  saveToLocal();
+  renderIconKeyList();
+  renderIconSettings();
 }
 
 let pendingNicIcon=null;
@@ -1532,13 +2124,13 @@ function renderIconSettings(){
   el.innerHTML = `
     <p style="font-size:12px;color:#64748b;margin-bottom:12px">アイコンキーは機材・種別に割り当てるアイコンの識別名です。カスタム画像をアップロードするとそのキーを持つ全機材のアイコンが変わります。</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:16px">
-      ${mIcons.map((ic)=>{
+      ${mIcons.map((ic,idx)=>{
         const hasCustom = !!customIconsByKey[ic.key];
         return `<div style="background:#0f1117;border:1px solid ${hasCustom?'#6366f1':'#252840'};border-radius:8px;padding:12px;text-align:center">
           <div style="width:44px;height:44px;margin:0 auto">${getIcon(ic.key,'#818cf8',44)}</div>
-          <div style="font-size:13px;font-weight:600;margin-top:8px;margin-bottom:2px">${ic.label}</div>
-          <div style="font-size:11px;color:#64748b;margin-bottom:6px">${ic.desc||'—'}</div>
-          <div style="font-size:10px;background:#252840;border-radius:3px;padding:2px 6px;display:inline-block;color:#94a3b8;font-family:monospace;margin-bottom:8px">${ic.key}</div>
+          <input value="${ic.label}" onblur="updateIconKey(${idx},'label',this.value)" placeholder="表示名" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#e2e8f0;font-size:13px;font-weight:600;margin-top:8px;margin-bottom:2px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#1a1d27'">
+          <input value="${ic.desc||''}" onblur="updateIconKey(${idx},'desc',this.value)" placeholder="説明" style="width:100%;text-align:center;background:transparent;border:1px solid transparent;border-radius:4px;color:#64748b;font-size:11px;margin-bottom:6px;padding:2px 4px;outline:none" onfocus="this.style.borderColor='#6366f1';this.style.background='#1a1d27'">
+          <input value="${ic.key}" onblur="updateIconKey(${idx},'key',this.value)" placeholder="キー名" style="width:100%;text-align:center;background:#252840;border:1px solid #252840;border-radius:3px;padding:2px 6px;color:#94a3b8;font-size:10px;font-family:monospace;margin-bottom:8px;outline:none" onfocus="this.style.borderColor='#6366f1'">
           <div style="display:flex;gap:4px;justify-content:center">
             <label class="btn btn-s btn-xs" style="cursor:pointer" title="画像をアップロード">
               📷 画像
@@ -1668,9 +2260,21 @@ function downloadCSV(filename, headers, rows){
   URL.revokeObjectURL(url);
 }
 
+function colorNameFromCode(code){
+  const m=mColors.find(c=>c.code===code);
+  return m?m.name:(code||'');
+}
+function colorCodeFromInput(val){
+  if(!val) return '#60a5fa';
+  const v=String(val).trim();
+  if(/^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+  const m=mColors.find(c=>c.name===v);
+  return m?m.code:'#60a5fa';
+}
+
 function exportEquipmentCSV(){
-  const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','備考'];
-  const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',e.notes||'']);
+  const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','色','備考'];
+  const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',colorNameFromCode(e.color),e.notes||'']);
   downloadCSV('equipment.csv',headers,rows);
 }
 
@@ -1694,11 +2298,13 @@ function parseCSVLine(line){
 function importEquipmentCSV(event){
   const file=event.target.files[0]; if(!file) return;
   event.target.value=''; // reset input
+  // 重複IDの扱いをインポート開始時に1回だけ確認し、ファイル全体に適用する
+  const overwrite = confirm('CSV内に既存の機材と同じIDがある場合、データを上書きしますか？\n\n「OK」：上書きする（既存データを更新）\n「キャンセル」：上書きしない（新規分のみ追加し、既存はそのまま）');
   const reader=new FileReader();
   reader.onload=e=>{
     const lines=e.target.result.replace(/\r/g,'').split('\n').filter(l=>l.trim());
     if(lines.length<2){alert('データがありません');return;}
-    let added=0,updated=0;
+    let added=0,updated=0,skipped=0;
     lines.slice(1).forEach(line=>{
       const c=parseCSVLine(line);
       if(c.length<2||!c[1]) return;
@@ -1708,14 +2314,19 @@ function importEquipmentCSV(event){
         cat:c[5]||mCat[0]?.name||'',own:c[6]||mOwn[0]?.name||'',
         base:c[7]||'',defLoc:c[8]||mLoc[0]?.name||'',
         qty:parseInt(c[9])||1,status:c[10]||'在庫あり',
-        location:c[11]||c[8]||'',holder:c[12]||'',notes:c[13]||'',
-        color:'#60a5fa',sort:equipment.length+1,fav:false,iconKey:'',slipId:'',
+        location:c[11]||c[8]||'',holder:c[12]||'',
+        color:colorCodeFromInput(c[13]),notes:c[14]||'',
+        sort:equipment.length+1,fav:false,iconKey:'',slipId:'',
       };
       const idx=equipment.findIndex(e=>e.id===id);
-      if(idx>=0){Object.assign(equipment[idx],data);updated++;}
+      if(idx>=0){
+        if(overwrite){ Object.assign(equipment[idx],data); updated++; }
+        else skipped++;
+      }
       else{equipment.push(data);added++;}
     });
-    alert('インポート完了：新規'+added+'件、更新'+updated+'件');
+    const msg='インポート完了：新規'+added+'件、更新'+updated+'件'+(skipped?'、スキップ'+skipped+'件（既存IDのため上書きしませんでした）':'');
+    alert(msg);
     renderEqReg();
   };
   reader.readAsText(file,'UTF-8');
@@ -1724,11 +2335,16 @@ function importEquipmentCSV(event){
 // ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
-loadFromLocal(); // ← localStorageからデータを復元（なければサンプルデータを使用）
-renderDashboard();
-setTimeout(()=>{
-  document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
-},100);
+// localStorageのマスター設定を復元（カテゴリ・ステータス等）
+loadFromLocal();
+// Supabaseから最新の機材・伝票データをロードしてから画面を描画
+(async ()=>{
+  await loadFromDb();
+  renderDashboard();
+  setTimeout(()=>{
+    document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
+  },100);
+})();
 </script>
 </body>
 </html>
