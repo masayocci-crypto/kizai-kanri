@@ -521,16 +521,25 @@ function itemToDb(i){ return {
   item_type:i.type, item_name:i.name||null, quantity:i.qty,
   usage_start:i.start||null, usage_end:i.end||null, note:i.notes||null,
 };}
+function dbToMaint(r){ return {
+  id:r.id, eqId:r.equipment_id, start:r.start_date||'', end:r.end_date||'',
+  status:r.status||'メンテナンス中', vendor:r.vendor||'', desc:r.description||'', result:r.result||'',
+};}
+function maintToDb(m){ return {
+  id:m.id, equipment_id:m.eqId, start_date:m.start||null, end_date:m.end||null,
+  status:m.status, vendor:m.vendor||null, description:m.desc||null, result:m.result||null,
+};}
 
 async function loadFromDb(){
   document.body.insertAdjacentHTML('beforeend',
     '<div id="sb-loading" style="position:fixed;inset:0;background:#0f1117;display:flex;align-items:center;justify-content:center;z-index:9999;font-size:14px;color:#818cf8">データを読み込んでいます…</div>');
   try {
-    const [eqRes, slipRes, itemRes, locRes] = await Promise.all([
+    const [eqRes, slipRes, itemRes, locRes, maintRes] = await Promise.all([
       sb.from('equipment_master').select('*').order('sort_order'),
       sb.from('checkout_slips').select('*').order('usage_date', {ascending:false}),
       sb.from('checkout_slip_lines').select('*'),
       sb.from('locations').select('*').order('sort_order'),
+      sb.from('maintenance_logs').select('*').order('start_date', {ascending:false}),
     ]);
     if(eqRes.data?.length){
       equipment.length=0;
@@ -547,6 +556,10 @@ async function loadFromDb(){
     if(locRes.data?.length){
       mLoc.length=0;
       locRes.data.forEach(r=>mLoc.push({id:r.id, name:r.name}));
+    }
+    if(maintRes.data){
+      maintenanceLogs.length=0;
+      maintRes.data.forEach(r=>maintenanceLogs.push(dbToMaint(r)));
     }
   } catch(err){ console.error('Supabase load error', err); }
   document.getElementById('sb-loading')?.remove();
@@ -572,6 +585,12 @@ async function deleteSlipFromDb(id){
 }
 async function updateEqStatusInDb(id, changes){
   await sb.from('equipment_master').update(changes).eq('id', id);
+}
+async function saveMaintToDb(m){
+  await sb.from('maintenance_logs').upsert(maintToDb(m));
+}
+async function deleteMaintFromDb(id){
+  await sb.from('maintenance_logs').delete().eq('id', id);
 }
 
 // ═══════════════════════════════════════════════
@@ -699,6 +718,8 @@ let historyLog = [
   {id:'H004',eqId:'E007',dt:dA(0)+'T08:00',op:'出庫',from:'JP倉庫',to:'福岡ドーム',fromP:'田中 花子',to_p:'松本 直樹',slip:'SL004',memo:''},
 ];
 
+let maintenanceLogs = [];
+
 const customIcons = {};
 const customIconsByKey = {};
 let pendingEfIcon = null;
@@ -801,6 +822,9 @@ const EBADGE = {'在庫あり':'b-stock','貸出中':'b-lent','返却待ち':'b-
 const SBADGE = {'仮登録':'b-draft','準備中':'b-prep','出庫済み':'b-out','使用中':'b-using','返却待ち':'b-retw','返却済み':'b-done','未返却':'b-over','キャンセル':'b-cancel'};
 const IBADGE = {'own':'b-own','external':'b-ext','rental':'b-rent'};
 const INAME = {'own':'自社','external':'他社','rental':'レンタル'};
+const MBADGE = {'メンテナンス中':'b-maint','確認中':'b-lost','修理完了':'b-stock','紛失':'b-lost','廃棄':'b-cancel'};
+const MSTATUS_LIST = ['メンテナンス中','確認中','修理完了','紛失','廃棄'];
+const mbdg = s=>`<span class="bdg ${MBADGE[s]||'b-draft'}">${s}</span>`;
 const ebdg = s=>`<span class="bdg ${EBADGE[s]||'b-draft'}">${s}</span>`;
 const sbdg = s=>`<span class="bdg ${SBADGE[s]||'b-draft'}">${s}</span>`;
 const ibdg = t=>`<span class="bdg ${IBADGE[t]||'b-draft'}">${INAME[t]||t}</span>`;
@@ -1262,6 +1286,51 @@ function saveStatusUpdate(id){
   openDetail(id);
 }
 
+function toggleMaintForm(id){
+  const f=document.getElementById('maint-form-'+id);
+  if(!f) return;
+  f.style.display=f.style.display==='none'?'':'none';
+}
+
+const MAINT_TO_EQ_STATUS = {
+  'メンテナンス中':'メンテナンス中',
+  '確認中':'紛失・確認中',
+  '修理完了':'在庫あり',
+  '紛失':'紛失・確認中',
+};
+
+function saveMaintenance(id){
+  const e=equipment.find(x=>x.id===id);
+  if(!e) return;
+  const status=document.getElementById('mf-status-'+id).value;
+  const vendor=document.getElementById('mf-vendor-'+id).value.trim();
+  const start=document.getElementById('mf-start-'+id).value||today();
+  let end=document.getElementById('mf-end-'+id).value||'';
+  const desc=document.getElementById('mf-desc-'+id).value.trim();
+  const result=document.getElementById('mf-result-'+id).value.trim();
+  if(status==='修理完了' && !end) end=today();
+  const m={ id:crypto.randomUUID(), eqId:id, start, end, status, vendor, desc, result };
+  maintenanceLogs.push(m);
+  saveMaintToDb(m);
+
+  const oldStatus=e.status;
+  const mappedStatus=MAINT_TO_EQ_STATUS[status];
+  if(mappedStatus && mappedStatus!==oldStatus){
+    historyLog.push({
+      id:crypto.randomUUID(),eqId:id,
+      dt:new Date().toISOString().slice(0,16),
+      op:'状況更新',from:oldStatus,to:mappedStatus,
+      fromP:'',toP:'',
+      slip:'',memo:'メンテナンス記録：'+status+(desc?'（'+desc+'）':'')
+    });
+    e.status=mappedStatus;
+    saveEqToDb(e);
+  }
+  saveToLocal();
+  toggleMaintForm(id);
+  openDetail(id);
+}
+
 function openDetail(id){
   const e=equipment.find(x=>x.id===id);
   if(!e) return;
@@ -1270,6 +1339,7 @@ function openDetail(id){
   prevView = savedPrev;
   const sl=e.slipId?slips.find(s=>s.id===e.slipId):null;
   const hist=historyLog.filter(h=>h.eqId===id).sort((a,b)=>b.dt.localeCompare(a.dt));
+  const maint=maintenanceLogs.filter(m=>m.eqId===id).sort((a,b)=>(b.start||'').localeCompare(a.start||''));
   const opC={'出庫':'#a78bfa','受け渡し':'#60a5fa','返却':'#34d399','故障登録':'#f87171','修理出し':'#fb923c','修理戻り':'#a3e635','状況更新':'#fbbf24'};
 
   // この機材が使われた全伝票を収集
@@ -1288,6 +1358,7 @@ function openDetail(id){
           ${e.status==='在庫あり'?`<button class="btn btn-p btn-sm" onclick="toggleLendForm('${e.id}')">📤 貸出</button>`:''}
           ${(e.status==='貸出中'||e.status==='返却待ち')?`<button class="btn btn-s btn-sm" onclick="saveReturn('${e.id}')">📥 返却</button>`:''}
           ${(e.status==='メンテナンス中'||e.status==='紛失・確認中')?`<button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">🔧 状況を更新</button>`:''}
+          <button class="btn btn-s btn-sm" onclick="toggleMaintForm('${e.id}')">🛠 メンテ登録</button>
           ${e.slipId?`<button class="btn btn-s btn-sm" onclick="openSlipDetail('${e.slipId}')">伝票を見る</button>`:''}
         </div>
       </div>
@@ -1324,6 +1395,25 @@ function openDetail(id){
         <button class="btn btn-s btn-sm" onclick="toggleStatusForm('${e.id}')">キャンセル</button>
       </div>
     </div>
+    <div id="maint-form-${e.id}" class="card mb12" style="display:none;border-color:#f97316">
+      <h3 style="margin-bottom:12px">🛠 メンテナンス記録を登録</h3>
+      <div class="g2">
+        <div class="fg"><label>ステータス</label>
+          <select id="mf-status-${e.id}">${MSTATUS_LIST.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+        </div>
+        <div class="fg"><label>業者・対応先</label><input id="mf-vendor-${e.id}" placeholder="例：〇〇サービスセンター"></div>
+      </div>
+      <div class="g2">
+        <div class="fg"><label>開始日</label><input type="date" id="mf-start-${e.id}" value="${today()}" style="color-scheme:dark"></div>
+        <div class="fg"><label>終了日（完了時）</label><input type="date" id="mf-end-${e.id}" style="color-scheme:dark"></div>
+      </div>
+      <div class="fg"><label>内容</label><textarea id="mf-desc-${e.id}" rows="2" placeholder="例：送信部の不具合確認のため修理に出す"></textarea></div>
+      <div class="fg"><label>結果・備考</label><textarea id="mf-result-${e.id}" rows="2" placeholder="例：基板を交換、正常動作確認済み"></textarea></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveMaintenance('${e.id}')">保存する</button>
+        <button class="btn btn-s btn-sm" onclick="toggleMaintForm('${e.id}')">キャンセル</button>
+      </div>
+    </div>
     <div class="card mb12">
       <div class="ig">
         <div><div class="ik">現在地</div><div class="iv">${e.location||'—'}</div></div>
@@ -1356,6 +1446,18 @@ function openDetail(id){
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#475569" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg>
         </div>`;
       }).join(''):'<div class="empty" style="padding:12px">伝票なし</div>'}
+    </div>
+    <div class="card mb12">
+      <h3>メンテナンス履歴（${maint.length}件）</h3>
+      ${maint.length?maint.map(m=>`<div style="padding:9px 0;border-bottom:1px solid #1a1d27">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          ${mbdg(m.status)}
+          <span style="font-size:12px;color:#94a3b8">${fmtF(m.start)}${m.end?'〜'+fmtF(m.end):'（進行中）'}</span>
+          ${m.vendor?`<span style="font-size:11px;color:#64748b">／ ${m.vendor}</span>`:''}
+        </div>
+        ${m.desc?`<div style="font-size:12px;color:#cbd5e1">${m.desc}</div>`:''}
+        ${m.result?`<div style="font-size:11px;color:#818cf8;margin-top:2px">結果：${m.result}</div>`:''}
+      </div>`).join(''):'<div class="empty" style="padding:12px">メンテナンス履歴なし</div>'}
     </div>
     <div class="card">
       <h3>移動履歴${hist.length>3?`<span style="font-size:11px;color:#64748b;font-weight:400;margin-left:8px">直近3件 / 全${hist.length}件</span>`:''}</h3>
@@ -2232,7 +2334,7 @@ function saveToLocal(){
       return obj;
     });
     const data = {
-      equipment: eqWithImg, slips, slipItems, historyLog,
+      equipment: eqWithImg, slips, slipItems, historyLog, maintenanceLogs,
       mCat, mLoc, mStatus, mOwn, mIcons, customIconsByKey,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(data));
@@ -2252,6 +2354,7 @@ function loadFromLocal(){
     replaceArr(slips, d.slips);
     replaceArr(slipItems, d.slipItems);
     replaceArr(historyLog, d.historyLog);
+    replaceArr(maintenanceLogs, d.maintenanceLogs);
     replaceArr(mCat, d.mCat);
     replaceArr(mLoc, d.mLoc);
     replaceArr(mStatus, d.mStatus);
