@@ -23,6 +23,14 @@ a{color:inherit;text-decoration:none}
 #main{flex:1;overflow-y:auto}
 .view{display:none;padding:20px}
 .view.on{display:block}
+/* ── Sticky view header ── */
+.view-head{position:sticky;top:0;z-index:6;background:#0f1117;margin:-20px -20px 14px;padding:20px 20px 14px;border-bottom:1px solid #1a1d27}
+.view-head h2{margin-bottom:0}
+.view-head h2 + .tb,.view-head h2 + .tabs{margin-top:12px}
+.view-head .tb,.view-head .tabs{margin-bottom:0}
+.view-head .chips{margin:10px 0 0}
+.view-head .tb.mb8{margin-bottom:0}
+
 /* ── Typography ── */
 h2{font-size:17px;font-weight:700;margin-bottom:16px}
 h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
@@ -198,7 +206,9 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── DASHBOARD ── -->
 <div id="v-dashboard" class="view on">
+  <div class="view-head">
   <h2>ダッシュボード</h2>
+  </div>
   <div class="g4 mb16" id="db-stats"></div>
   <div class="g2 mb16" id="db-today-events"></div>
   <div class="g2">
@@ -212,6 +222,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── EQUIPMENT STATUS ── -->
 <div id="v-eq-status" class="view">
+  <div class="view-head">
   <div class="tb">
     <input id="qs-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderEqStatus()">
     <select id="qs-st" onchange="renderEqStatus()"><option value="">全ステータス</option></select>
@@ -225,14 +236,17 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <button class="btn btn-sm btn-s" id="qs-view-btn" onclick="toggleEqView()">📋 リスト</button>
   </div>
   <div class="chips" id="qs-chips"></div>
+  </div>
   <div id="eq-status-body"></div>
 </div>
 
 <!-- ── SCHEDULE ── -->
 <div id="v-schedule" class="view">
+  <div class="view-head">
   <div class="tabs mb16">
     <div class="tab on" onclick="schedTab(this,'s-cal')">カレンダー</div>
     <div class="tab" onclick="schedTab(this,'s-grid')">機材グリッド</div>
+  </div>
   </div>
   <div id="s-cal" class="tp on">
     <div id="cal-wrap"><div id="fc-cal"></div></div>
@@ -249,18 +263,22 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 <!-- ── SLIP LIST / FORM / DETAIL ── -->
 <div id="v-slip" class="view">
   <div id="slip-list-panel">
+    <div class="view-head">
     <div class="tb">
       <input id="sl-q" placeholder="イベント名・場所・担当者で検索…" oninput="renderSlipList()">
       <select id="sl-st" onchange="renderSlipList()"><option value="">全ステータス</option></select>
       <button class="btn btn-p btn-sm" onclick="openSlipForm()">＋ 新規伝票</button>
       <button class="btn btn-s btn-sm" onclick="exportSlipsCSV()" title="伝票リストをCSVで書き出し">⬇ CSV</button>
     </div>
+    </div>
     <div id="slip-tbl-wrap" class="tbl-wrap"></div>
   </div>
   <div id="slip-form-panel" style="display:none">
+    <div class="view-head">
     <div class="tb mb8">
       <button class="btn btn-s btn-sm" onclick="closeSlipForm()">← 一覧に戻る</button>
       <span id="slip-form-title" style="font-size:14px;font-weight:600;color:#e2e8f0"></span>
+    </div>
     </div>
     <div class="mw720">
       <div class="card mb12">
@@ -311,8 +329,10 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     </div>
   </div>
   <div id="slip-detail-panel" style="display:none">
+    <div class="view-head">
     <div class="tb mb8">
       <button class="btn btn-s btn-sm" onclick="closeSlipDetail()">← 一覧に戻る</button>
+    </div>
     </div>
     <div id="slip-detail-body"></div>
   </div>
@@ -320,6 +340,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── EQUIPMENT REGISTRATION ── -->
 <div id="v-eq-reg" class="view">
+  <div class="view-head">
   <div class="tb">
     <input id="er-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderEqReg()">
     <select id="er-cat" onchange="renderEqReg()"><option value="">全種別</option></select>
@@ -327,6 +348,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <button class="btn btn-s btn-sm" onclick="exportEquipmentCSV()" title="機材リストをCSVで書き出し">⬇ CSV</button>
     <label class="btn btn-s btn-sm" style="cursor:pointer" title="CSVから機材をインポート">⬆ インポート<input type="file" accept=".csv,text/csv" style="display:none" onchange="importEquipmentCSV(event)"></label>
     <button class="btn btn-sm btn-s" id="er-view-btn" onclick="toggleErView()">📋 リスト</button>
+  </div>
   </div>
   <div id="er-tbl-wrap" class="mb16"></div>
   <div id="eq-form-panel" style="display:none">
@@ -403,10 +425,12 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── ICON MANAGER ── -->
 <div id="v-icons" class="view">
+  <div class="view-head">
   <h2>アイコン管理</h2>
   <div class="tabs">
     <div class="tab on" onclick="iconTab(this,'ic-keys')">アイコンキー一覧</div>
     <div class="tab" onclick="iconTab(this,'ic-add')">新規キーを追加</div>
+  </div>
   </div>
   <div id="ic-keys" class="tp on"><div id="ic-keys-body"></div></div>
   <div id="ic-add" class="tp">
@@ -439,6 +463,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── SETTINGS ── -->
 <div id="v-settings" class="view">
+  <div class="view-head">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <h2 style="margin:0">設定</h2>
     <div style="display:flex;gap:8px">
@@ -454,6 +479,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
     <div class="tab" onclick="settTab(this,'st-own')">所有区分</div>
     <div class="tab" onclick="settTab(this,'st-color')">表示色</div>
   </div>
+  </div>
   <div id="st-icon" class="tp on"><div id="stt-icon-body"></div></div>
   <div id="st-cat" class="tp"><div id="stt-cat-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('cat')">＋ 追加</button></div></div>
   <div id="st-loc" class="tp"><div id="stt-loc-body"></div><div style="margin-top:8px"><button class="btn btn-s btn-sm" onclick="addSettRow('loc')">＋ 追加</button></div></div>
@@ -464,7 +490,9 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 
 <!-- ── DETAIL (machine detail) ── -->
 <div id="v-detail" class="view">
+  <div class="view-head">
   <div class="tb mb12"><button class="btn btn-s btn-sm" onclick="nav(prevView||'eq-status')">← 戻る</button></div>
+  </div>
   <div id="detail-body"></div>
 </div>
 
