@@ -2480,7 +2480,12 @@ function renderSettBody(type){
       }
       return '<input value="' + val + '" onblur="' + onb + '">';
     }).join('');
+    const moveBtns = '<div style="display:flex;flex-direction:column;gap:1px">'
+      + '<button class="btn btn-s btn-xs" style="padding:0 6px;line-height:1.4" onclick="moveSett(\'' + type + '\',' + idx + ',-1)"' + (idx===0?' disabled':'') + ' title="上へ移動">▲</button>'
+      + '<button class="btn btn-s btn-xs" style="padding:0 6px;line-height:1.4" onclick="moveSett(\'' + type + '\',' + idx + ',1)"' + (idx===data.length-1?' disabled':'') + ' title="下へ移動">▼</button>'
+      + '</div>';
     return '<div class="st-row" id="srow-' + type + '-' + idx + '">'
+      + moveBtns
       + cells
       + '<button class="btn btn-d btn-xs" onclick="deleteSett(\'' + type + '\',' + idx + ')">削除</button>'
       + '</div>';
@@ -2562,6 +2567,16 @@ function updateSett(type,idx,field,val){
 function deleteSett(type,idx){
   const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
   if(map[type]){ map[type].splice(idx,1); renderSettBody(type); saveToLocal(); if(type!=='loc') syncSettingsToCloud(); }
+}
+function moveSett(type,idx,dir){
+  const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
+  const arr=map[type]; if(!arr) return;
+  const j=idx+dir;
+  if(j<0||j>=arr.length) return;
+  [arr[idx],arr[j]]=[arr[j],arr[idx]];
+  renderSettBody(type);
+  saveToLocal();
+  if(type!=='loc') syncSettingsToCloud();
 }
 function addSettRow(type){
   const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
