@@ -161,6 +161,20 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 .tbl-wrap{overflow-x:auto}
 .icon-upload-area{border:2px dashed #252840;border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color .12s}
 .icon-upload-area:hover{border-color:#6366f1}
+/* ── 出庫伝票フォーム：右側に機材ピッカーを表示 ── */
+.slip-form-layout{display:flex;gap:16px;align-items:flex-start}
+.slip-form-layout .mw720{flex:1;min-width:0}
+.slip-eq-picker{width:320px;flex-shrink:0;position:sticky;top:20px;max-height:calc(100vh - 110px);display:flex;flex-direction:column}
+.slip-eq-picker .sep-filters{display:flex;flex-wrap:wrap;gap:6px}
+.slip-eq-picker .sep-filters input,.slip-eq-picker .sep-filters select{flex:1;min-width:90px}
+.slip-eq-picker .sep-body{overflow-y:auto;flex:1;margin-top:10px;padding-right:2px}
+.slip-eq-picker .eq-cards{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+.slip-eq-picker .eq-card{padding:8px;cursor:pointer}
+.slip-eq-picker .eq-card .ec-icon{width:40px;height:40px}
+@media (max-width:1180px){
+  .slip-form-layout{flex-direction:column}
+  .slip-eq-picker{width:auto;position:static;max-height:none}
+}
 </style>
 </head>
 <body>
@@ -168,6 +182,8 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
 <!-- ═══ SIDEBAR ═══ -->
 <div id="sb">
   <div class="logo">📦 機材管理システム</div>
+  <button class="btn btn-s btn-sm" id="cloud-reload-btn" onclick="reloadFromCloud()" style="margin:0 14px 4px;width:calc(100% - 28px)" title="他の担当者の更新をクラウドから取得します">⟳ クラウドから更新</button>
+  <div id="cloud-sync-label" style="margin:0 14px 10px;font-size:11px;color:#475569"></div>
   <div class="grp-label">確認</div>
   <a class="nav active" onclick="nav('dashboard')" id="n-dashboard">
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="7" height="7" rx="1"/><rect x="9" y="0" width="7" height="7" rx="1"/><rect x="0" y="9" width="7" height="7" rx="1"/><rect x="9" y="9" width="7" height="7" rx="1"/></svg>
@@ -281,6 +297,7 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
       <span id="slip-form-title" style="font-size:14px;font-weight:600;color:#e2e8f0"></span>
     </div>
     </div>
+    <div class="slip-form-layout">
     <div class="mw720">
       <div class="card mb12">
         <h3 class="mb12">イベント情報</h3>
@@ -327,6 +344,19 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
         <button class="btn btn-s" onclick="closeSlipForm()">キャンセル</button>
         <button class="btn btn-d btn-sm" id="sf-del-btn" style="display:none" onclick="deleteSlip()">削除</button>
       </div>
+    </div>
+    <div class="slip-eq-picker card">
+      <h3 class="mb8" style="margin-top:0">機材を選んで追加</h3>
+      <div class="sep-filters mb8">
+        <input id="sep-q" placeholder="機材名・型番・管理番号で検索…" oninput="renderSlipEqPicker()">
+      </div>
+      <div class="sep-filters">
+        <select id="sep-st" onchange="renderSlipEqPicker()"><option value="">全ステータス</option></select>
+        <select id="sep-cat" onchange="renderSlipEqPicker()"><option value="">全種別</option></select>
+        <select id="sep-loc" onchange="renderSlipEqPicker()"><option value="">全管理場所</option></select>
+      </div>
+      <div class="sep-body" id="slip-eq-picker-body"></div>
+    </div>
     </div>
   </div>
   <div id="slip-detail-panel" style="display:none">
@@ -467,7 +497,12 @@ h3{font-size:13px;font-weight:600;color:#94a3b8;margin-bottom:8px}
   <div class="view-head">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
     <h2 style="margin:0">設定</h2>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-s btn-sm" onclick="exportSettingsBackup()" title="アイコンキー・種別・ステータス等の設定をファイルに書き出します">⬇ 設定をバックアップ</button>
+      <label class="btn btn-s btn-sm" style="cursor:pointer" title="バックアップファイルから設定を復元します">
+        ⬆ 設定を復元
+        <input type="file" accept="application/json,.json" style="display:none" onchange="importSettingsBackup(event)">
+      </label>
       <button class="btn btn-d btn-sm" onclick="clearAllEquipment()" title="登録されている機材を全て削除">🗑 機材リストを全削除</button>
       <button class="btn btn-d btn-sm" onclick="clearLocalData()" title="保存データをリセットしてサンプルデータに戻す">🗑 データをリセット</button>
     </div>
@@ -563,12 +598,13 @@ async function loadFromDb(){
   document.body.insertAdjacentHTML('beforeend',
     '<div id="sb-loading" style="position:fixed;inset:0;background:#0f1117;display:flex;align-items:center;justify-content:center;z-index:9999;font-size:14px;color:#818cf8">データを読み込んでいます…</div>');
   try {
-    const [eqRes, slipRes, itemRes, locRes, maintRes] = await Promise.all([
+    const [eqRes, slipRes, itemRes, locRes, maintRes, settRes] = await Promise.all([
       sb.from('equipment_master').select('*').order('sort_order'),
       sb.from('checkout_slips').select('*').order('usage_date', {ascending:false}),
       sb.from('checkout_slip_lines').select('*'),
       sb.from('locations').select('*').order('sort_order'),
       sb.from('maintenance_logs').select('*').order('start_date', {ascending:false}),
+      sb.from('app_settings').select('*').eq('id','main').maybeSingle(),
     ]);
     if(eqRes.data?.length){
       equipment.length=0;
@@ -590,12 +626,103 @@ async function loadFromDb(){
       maintenanceLogs.length=0;
       maintRes.data.forEach(r=>maintenanceLogs.push(dbToMaint(r)));
     }
+    if(settRes?.data?.data){
+      applySettingsData(settRes.data.data);
+    } else {
+      // クラウドにまだ設定が無い場合は、今ローカルにある設定（＝今まさに編集中の内容を含む）を
+      // そのままクラウドへ初期投入する。サンプル初期値で上書きしてしまわないようにするため。
+      saveSettingsToDb().catch(err=>console.error('設定の初期クラウド保存エラー', err));
+    }
   } catch(err){ console.error('Supabase load error', err); }
   document.getElementById('sb-loading')?.remove();
 }
 
+// ═══════════════════════════════════════════════
+//  設定（アイコンキー・種別・ステータス等）のクラウド同期 ＆ バックアップ
+//  app_settings テーブルに1行（id='main'）のJSONとして保存し、
+//  複数の担当者間でマスター設定を共有できるようにする。
+// ═══════════════════════════════════════════════
+function collectSettingsData(){
+  return {
+    mCat, mStatus, mOwn, mColors, mIcons, customIconsByKey,
+  };
+}
+function applySettingsData(d){
+  if(!d) return;
+  const replaceArr=(target,src)=>{ if(!Array.isArray(src)) return; target.length=0; src.forEach(x=>target.push(x)); };
+  replaceArr(mCat, d.mCat);
+  replaceArr(mStatus, d.mStatus);
+  replaceArr(mOwn, d.mOwn);
+  replaceArr(mColors, d.mColors);
+  replaceArr(mIcons, d.mIcons);
+  if(d.customIconsByKey && typeof d.customIconsByKey==='object'){
+    Object.keys(customIconsByKey).forEach(k=>delete customIconsByKey[k]);
+    Object.assign(customIconsByKey, d.customIconsByKey);
+  }
+}
+async function saveSettingsToDb(){
+  await sb.from('app_settings').upsert({id:'main', data:collectSettingsData(), updated_at:new Date().toISOString()});
+}
+// 設定変更のたびに即時送信すると通信が増えすぎるため、少し待ってからまとめて送る
+let _settingsSyncTimer=null;
+function syncSettingsToCloud(){
+  clearTimeout(_settingsSyncTimer);
+  _settingsSyncTimer=setTimeout(()=>{
+    saveSettingsToDb().catch(err=>console.error('設定のクラウド保存エラー', err));
+  }, 800);
+}
+
+// 手動バックアップ：設定をJSONファイルとして書き出す（ファイル名に日付を入れて上書き事故を防止）
+function exportSettingsBackup(){
+  const payload={
+    type:'kikazai_settings_backup', version:1,
+    exportedAt:new Date().toISOString(),
+    data:collectSettingsData(),
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='設定バックアップ_'+today()+'.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// バックアップファイルから設定を復元する
+function importSettingsBackup(event){
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    let payload;
+    try{ payload=JSON.parse(e.target.result); }
+    catch(err){ alert('ファイルの読み込みに失敗しました（JSON形式ではありません）'); event.target.value=''; return; }
+    const data=payload?.data||payload; // 旧形式（dataラップなし）にも一応対応
+    if(!data||typeof data!=='object'){ alert('設定データが見つかりませんでした'); event.target.value=''; return; }
+    if(!confirm('現在の設定をバックアップファイルの内容で上書きします。よろしいですか？')){ event.target.value=''; return; }
+    applySettingsData(data);
+    saveToLocal();
+    renderSettBody('icon'); renderSettBody('cat'); renderSettBody('loc');
+    renderSettBody('status'); renderSettBody('own'); renderSettBody('color');
+    let dbMsg='';
+    try{ await saveSettingsToDb(); }
+    catch(err){
+      console.error('設定のクラウド保存エラー', err);
+      dbMsg='\n\n※クラウドへの保存中にエラーが発生しました。ローカルへの復元は完了しています。';
+    }
+    alert('設定を復元しました'+dbMsg);
+    event.target.value='';
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
 async function saveEqToDb(e){
   await sb.from('equipment_master').upsert(eqToDb(e));
+}
+async function saveEqListToDb(list){
+  if(!list.length) return;
+  // Supabaseへの一括upsertは1回あたりの件数が多すぎるとエラーになることがあるため分割して送信
+  const CHUNK=50;
+  for(let i=0;i<list.length;i+=CHUNK){
+    const chunk=list.slice(i,i+CHUNK).map(eqToDb);
+    await sb.from('equipment_master').upsert(chunk);
+  }
 }
 async function deleteEqFromDb(id){
   await sb.from('equipment_master').delete().eq('id',id);
@@ -1822,6 +1949,7 @@ function openSlipForm(id=''){
   if(id){
     slipItems.filter(i=>i.slipId===id).forEach(i=>addSlipItem(i.type,i));
   }
+  renderSlipEqPicker();
   document.getElementById('slip-form-panel').scrollIntoView({behavior:'smooth'});
 }
 
@@ -1835,7 +1963,7 @@ function recheckEqConflicts(rowId){
 function checkEqConflicts(eqId,rowId){
   const row=document.getElementById(rowId);
   if(!row) return;
-  let warn=row.querySelector('.eq-warn');
+  let warn=(row.nextElementSibling&&row.nextElementSibling.classList.contains('eq-warn'))?row.nextElementSibling:null;
   if(!warn){ warn=document.createElement('div'); warn.className='eq-warn'; warn.style.cssText='grid-column:1/-1;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:2px'; row.after(warn); }
   warn.innerHTML='';
   if(!eqId) return;
@@ -1906,6 +2034,47 @@ function addSlipItem(type,data=null){
     const sel=div.querySelector('.si-eq');
     if(sel){ sel.value=data.eqId||''; if(data.eqId) checkEqConflicts(data.eqId,rowId); }
   }
+}
+
+// 出庫伝票フォーム右側の機材ピッカー：検索／フィルターした機材をカード表示し、
+// クリックすると「使用機材一覧」に自社機材として行を追加する
+function renderSlipEqPicker(){
+  const body=document.getElementById('slip-eq-picker-body');
+  if(!body) return;
+
+  const stSel=document.getElementById('sep-st');
+  if(stSel.options.length<=1){ mStatus.forEach(s=>{const o=document.createElement('option');o.textContent=s.name;stSel.appendChild(o);}); }
+  const catSel=document.getElementById('sep-cat');
+  if(catSel.options.length<=1){ mCat.forEach(c=>{const o=document.createElement('option');o.textContent=c.name;catSel.appendChild(o);}); }
+  const locSel=document.getElementById('sep-loc');
+  if(locSel.options.length<=1){ mLoc.forEach(l=>{const o=document.createElement('option');o.textContent=l.name;locSel.appendChild(o);}); }
+
+  const q=(document.getElementById('sep-q').value||'').toLowerCase();
+  const st=stSel.value, cat=catSel.value, loc=locSel.value;
+
+  const list=equipment.filter(e=>{
+    if(q&&!`${e.name}${e.model}${e.serial}`.toLowerCase().includes(q)) return false;
+    if(st&&e.status!==st) return false;
+    if(cat&&e.cat!==cat) return false;
+    if(loc&&e.defLoc!==loc) return false;
+    return true;
+  });
+
+  if(!list.length){ body.innerHTML='<div class="empty">該当機材なし</div>'; return; }
+
+  body.innerHTML=`<div class="eq-cards">${list.map(e=>`
+    <div class="eq-card" onclick="addSlipItemForEq('${e.id}')" title="クリックで使用機材一覧に追加">
+      <div class="ec-icon" style="background:${e.color}22">${getIcon(e.cat,e.color,36,e.id)}</div>
+      <div class="ec-name">${e.name}</div>
+      <div class="ec-sub">${e.model}</div>
+      <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:4px">${ebdg(e.status)}${baseBdg(e.base)}</div>
+      <div class="ec-loc">${e.location||'—'}</div>
+    </div>`).join('')}</div>`;
+}
+
+// 機材カードをクリックしたときに「使用機材一覧」へ自社機材の行として追加する
+function addSlipItemForEq(eqId){
+  addSlipItem('own',{qty:1,start:'',end:'',notes:'',eqId});
 }
 
 // 機材に紐づく伝票の中から「現在最も該当する伝票」を日程基準で判定する
@@ -2253,6 +2422,7 @@ function deleteIconKey(idx){
   if(key) delete customIconsByKey[key];
   renderIconKeyList();
   saveToLocal();
+  syncSettingsToCloud();
 }
 
 function updateIconKey(idx,field,val){
@@ -2280,6 +2450,7 @@ function updateIconKey(idx,field,val){
     return;
   }
   saveToLocal();
+  syncSettingsToCloud();
   renderIconKeyList();
   renderIconSettings();
 }
@@ -2325,6 +2496,7 @@ function saveNewIconKey(){
   tabs[0].classList.add('on'); tp[0].classList.add('on');
   renderIconKeyList();
   saveToLocal();
+  syncSettingsToCloud();
   alert('「'+label+'」を登録しました');
 }
 
@@ -2413,7 +2585,7 @@ function renderIconSettings(){
 function uploadIconByKey(key, event){
   const file = event.target.files[0]; if(!file) return;
   const reader = new FileReader();
-  reader.onload = e => { customIconsByKey[key] = e.target.result; renderIconSettings(); saveToLocal(); };
+  reader.onload = e => { customIconsByKey[key] = e.target.result; renderIconSettings(); saveToLocal(); syncSettingsToCloud(); };
   reader.readAsDataURL(file);
 }
 
@@ -2421,6 +2593,7 @@ function clearIconByKey(key){
   delete customIconsByKey[key];
   renderIconSettings();
   saveToLocal();
+  syncSettingsToCloud();
 }
 
 function addIconKey(){
@@ -2434,15 +2607,17 @@ function addIconKey(){
   document.getElementById('new-icon-key').value='';
   document.getElementById('new-icon-label').value='';
   document.getElementById('new-icon-desc').value='';
+  saveToLocal();
+  syncSettingsToCloud();
 }
 
 function updateSett(type,idx,field,val){
   const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
-  if(map[type]&&map[type][idx]){ map[type][idx][field]=val; saveToLocal(); }
+  if(map[type]&&map[type][idx]){ map[type][idx][field]=val; saveToLocal(); if(type!=='loc') syncSettingsToCloud(); }
 }
 function deleteSett(type,idx){
   const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
-  if(map[type]){ map[type].splice(idx,1); renderSettBody(type); saveToLocal(); }
+  if(map[type]){ map[type].splice(idx,1); renderSettBody(type); saveToLocal(); if(type!=='loc') syncSettingsToCloud(); }
 }
 function addSettRow(type){
   const map={cat:mCat,loc:mLoc,status:mStatus,own:mOwn,color:mColors};
@@ -2451,6 +2626,7 @@ function addSettRow(type){
     own:{id:'o'+Date.now(),name:'新区分'},color:{id:'co'+Date.now(),name:'新色',code:'#ffffff'}};
   map[type].push(templates[type]||{id:'x'+Date.now(),name:'新項目'});
   renderSettBody(type); saveToLocal();
+  if(type!=='loc') syncSettingsToCloud();
 }
 
 // ═══════════════════════════════════════════════
@@ -2467,7 +2643,7 @@ function saveToLocal(){
     });
     const data = {
       equipment: eqWithImg, slips, slipItems, historyLog, maintenanceLogs,
-      mCat, mLoc, mStatus, mOwn, mIcons, customIconsByKey,
+      mCat, mLoc, mStatus, mOwn, mColors, mIcons, customIconsByKey,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(data));
   } catch(e) { console.warn('save failed', e); }
@@ -2491,6 +2667,7 @@ function loadFromLocal(){
     replaceArr(mLoc, d.mLoc);
     replaceArr(mStatus, d.mStatus);
     replaceArr(mOwn, d.mOwn);
+    replaceArr(mColors, d.mColors);
     replaceArr(mIcons, d.mIcons);
     if(d.customIconsByKey) Object.assign(customIconsByKey, d.customIconsByKey);
     return true;
@@ -2532,13 +2709,15 @@ function colorCodeFromInput(val){
 function exportEquipmentCSV(){
   const headers=['ID','機材名','型番','管理番号','メーカー','種別','所有区分','拠点','管理場所','在庫数','ステータス','現在地','保有者','色','備考'];
   const rows=equipment.map(e=>[e.id,e.name,e.model,e.serial,e.maker,e.cat,e.own,e.base||'',e.defLoc,e.qty,e.status,e.location||'',e.holder||'',colorNameFromCode(e.color),e.notes||'']);
-  downloadCSV('equipment.csv',headers,rows);
+  // ファイル名に日付を入れて、過去のバックアップファイルを上書きしないようにする
+  downloadCSV('機材一覧_'+today()+'.csv',headers,rows);
 }
 
 function exportSlipsCSV(){
   const headers=['ID','イベント名','クライアント','場所','担当者','使用開始','使用終了','出庫日','返却予定日','実返却日','ステータス','備考'];
   const rows=slips.map(s=>[s.id,s.event,s.client||'',s.loc,s.person,s.start||'',s.end||'',s.checkout||'',s.retPlan||'',s.retActual||'',s.status,s.notes||'']);
-  downloadCSV('slips.csv',headers,rows);
+  // ファイル名に日付を入れて、過去のバックアップファイルを上書きしないようにする
+  downloadCSV('出庫伝票一覧_'+today()+'.csv',headers,rows);
 }
 
 function parseCSVLine(line){
@@ -2558,10 +2737,11 @@ function importEquipmentCSV(event){
   // 重複IDの扱いをインポート開始時に1回だけ確認し、ファイル全体に適用する
   const overwrite = confirm('CSV内に既存の機材と同じIDがある場合、データを上書きしますか？\n\n「OK」：上書きする（既存データを更新）\n「キャンセル」：上書きしない（新規分のみ追加し、既存はそのまま）');
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     const lines=e.target.result.replace(/\r/g,'').split('\n').filter(l=>l.trim());
     if(lines.length<2){alert('データがありません');return;}
     let added=0,updated=0,skipped=0;
+    const changed=[]; // ローカル/クラウドへ保存が必要なレコード
     lines.slice(1).forEach(line=>{
       const c=parseCSVLine(line);
       if(c.length<2||!c[1]) return;
@@ -2577,12 +2757,24 @@ function importEquipmentCSV(event){
       };
       const idx=equipment.findIndex(e=>e.id===id);
       if(idx>=0){
-        if(overwrite){ Object.assign(equipment[idx],data); updated++; }
+        if(overwrite){ Object.assign(equipment[idx],data); updated++; changed.push(equipment[idx]); }
         else skipped++;
       }
-      else{equipment.push(data);added++;}
+      else{equipment.push(data);added++;changed.push(data);}
     });
-    const msg='インポート完了：新規'+added+'件、更新'+updated+'件'+(skipped?'、スキップ'+skipped+'件（既存IDのため上書きしませんでした）':'');
+    // インポートしたデータをローカル保存＋クラウド(Supabase)へ反映する
+    // ※これを行わないと、画面を閉じた瞬間にインポート内容が消えてしまう
+    saveToLocal();
+    let dbMsg='';
+    if(changed.length){
+      try{
+        await saveEqListToDb(changed);
+      }catch(err){
+        console.error('クラウド保存エラー', err);
+        dbMsg='\n\n※クラウド（Supabase）への保存中にエラーが発生しました。ネットワーク状況を確認し、再度お試しください。ローカルへの保存は完了しています。';
+      }
+    }
+    const msg='インポート完了：新規'+added+'件、更新'+updated+'件'+(skipped?'、スキップ'+skipped+'件（既存IDのため上書きしませんでした）':'')+dbMsg;
     alert(msg);
     renderEqReg();
   };
@@ -2597,11 +2789,40 @@ loadFromLocal();
 // Supabaseから最新の機材・伝票データをロードしてから画面を描画
 (async ()=>{
   await loadFromDb();
+  markCloudSynced();
   renderDashboard();
   setTimeout(()=>{
     document.getElementById('sg-month').value=new Date().toISOString().slice(0,7);
   },100);
 })();
+
+// ═══════════════════════════════════════════════
+//  CLOUD SYNC（複数人での利用を想定）
+// ═══════════════════════════════════════════════
+// 各自の編集はその場でクラウド(Supabase)に保存される設計だが、
+// 他の担当者が更新した内容は自動では反映されないため、
+// 手動でクラウドの最新データを取得し直すボタンを用意する。
+function markCloudSynced(){
+  const el=document.getElementById('cloud-sync-label');
+  if(el) el.textContent='クラウド同期：'+new Date().toTimeString().slice(0,5)+' 時点';
+}
+async function reloadFromCloud(){
+  const btn=document.getElementById('cloud-reload-btn');
+  if(btn){ btn.disabled=true; btn.textContent='更新中…'; }
+  try{
+    await loadFromDb();
+    saveToLocal();
+    markCloudSynced();
+    // 表示中の画面を最新データで再描画
+    if(typeof currentView!=='undefined' && currentView) nav(currentView);
+    else renderDashboard();
+  }catch(err){
+    console.error('クラウド再読込エラー', err);
+    alert('クラウドからの再読み込みに失敗しました。通信状況を確認してもう一度お試しください。');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent='⟳ クラウドから更新'; }
+  }
+}
 </script>
 </body>
 </html>
